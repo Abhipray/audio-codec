@@ -87,6 +87,16 @@ def StartStopWindow(dataSampleArray, N_long, N_short):
     window = np.concatenate((np.zeros(zeroN), SineWindow(np.ones(N_short)), np.zeros(zeroN)))
     return window * dataSampleArray
 
+def TestShortWindow(dataSampleArray, N_long, N_short):
+    """
+    Returns a copy of dataSampleArray Sine-Windowed
+    with a window instead of the short windows to be used
+    later
+    """
+    zeroN = N_long - N_short
+    window = np.concatenate((SineWindow(np.ones(N_short))[:N_short//2], np.zeros(zeroN), SineWindow(np.ones(N_short))[N_short//2:]))
+    return window * dataSampleArray
+
 #-----------------------------------------------------------------------------
 
 #Testing code

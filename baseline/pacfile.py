@@ -104,6 +104,7 @@ Description of the PAC File Format:
 from audiofile import *  # base class
 from bitpack import *  # class for packing data into an array of bytes where each item's number of bits is specified
 import codec  # module where the actual PAC coding functions reside(this module only specifies the PAC file format)
+from detect_transients import parTransientDetect
 from psychoac import ScaleFactorBands, AssignMDCTLinesFromFreqLimits  # defines the grouping of MDCT lines into scale factor bands
 from pathlib import Path
 import os
@@ -215,10 +216,14 @@ class PACFile(AudioFile):
 
             # CUSTOM DATA:
             # < now can unpack any custom data passed in the nBytes of data >
+            lastTrans = pb.ReadBits(1)
+            curTrans  = pb.ReadBits(1)
+            nextTrans = pb.ReadBits(1)
 
             # (DECODE HERE) decode the unpacked data for this channel, overlap-and-add first half, and append it to the data array (saving other half for next overlap-and-add)
             decodedData = self.Decode(scaleFactor, bitAlloc, mantissa,
-                                      overallScaleFactor, codingParams)
+                                      overallScaleFactor, codingParams,
+                                      lastTrans, curTrans, nextTrans)
             data[iCh] = np.concatenate(
                 (data[iCh],
                  np.add(codingParams.overlapAndAdd[iCh],
@@ -267,7 +272,7 @@ class PACFile(AudioFile):
         codingParams.priorBlock = priorBlock
         return
 
-    def WriteDataBlock(self, data, codingParams):
+    def WriteDataBlock(self, data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
         """
         Writes a block of signed-fraction data to a PACFile object that has
         already executed OpenForWriting()"""
@@ -281,7 +286,8 @@ class PACFile(AudioFile):
 
         # (ENCODE HERE) Encode the full block of multi=channel data
         (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(
-            fullBlockData, codingParams
+            fullBlockData, codingParams, lastTrans=lastTrans,
+            curTrans=curTrans, nextTrans=nextTrans
         )  # returns a tuple with all the block-specific info not in the file header
 
         # for each channel, write the data to the output file
@@ -305,6 +311,7 @@ class PACFile(AudioFile):
             # now convert the bits to bytes (w/ extra one if spillover beyond byte boundary)
             if nBytes % BYTESIZE == 0: nBytes //= BYTESIZE
             else: nBytes = nBytes // BYTESIZE + 1
+            nBytes += 1 # for block switching
             self.fp.write(pack(
                 "<L",
                 int(nBytes)))  # stores size as a little-endian unsigned long
@@ -340,6 +347,9 @@ class PACFile(AudioFile):
 
             # CUSTOM DATA:
             # < now can add in custom data if space allocated in nBytes above>
+            pb.WriteBits(lastTrans, 1)
+            pb.WriteBits(curTrans, 1)
+            pb.WriteBits(nextTrans, 1)
 
             # finally, write the data in this channel's PackedBits object to the output file
             self.fp.write(pb.GetPackedData())
@@ -361,24 +371,25 @@ class PACFile(AudioFile):
             self.WriteDataBlock(data, codingParams)
         self.fp.close()
 
-    def Encode(self, data, codingParams):
+    def Encode(self, data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
         """
         Encodes multichannel audio data and returns a tuple containing
         the scale factors, mantissa bit allocations, quantized mantissas,
         and the overall scale factor for each channel.
         """
         #Passes encoding logic to the Encode function defined in the codec module
-        return codec.Encode(data, codingParams)
+        return codec.Encode(data, codingParams, lastTrans, curTrans, nextTrans)
 
     def Decode(self, scaleFactor, bitAlloc, mantissa, overallScaleFactor,
-               codingParams):
+               codingParams, lastTrans=False, curTrans=False, nextTrans=False):
         """
         Decodes a single audio channel of data based on the values of its scale factors,
         bit allocations, quantized mantissas, and overall scale factor.
         """
         #Passes decoding logic to the Decode function defined in the codec module
         return codec.Decode(scaleFactor, bitAlloc, mantissa,
-                            overallScaleFactor, codingParams)
+                            overallScaleFactor, codingParams,
+                            lastTrans, curTrans, nextTrans)
 
 
 #-----------------------------------------------------------------------------
@@ -439,10 +450,31 @@ if __name__ == "__main__":
                     codingParams)  # (includes writing header)
 
                 # Read the input file and pass its data to the output file to be written
+                lookahead = np.zeros((codingParams.nChannels, 2*codingParams.nSamplesPerBlock))
+                curBlockHasTransient = False
+                lastBlockHadTransient = False
                 while True:
-                    data = inFile.ReadDataBlock(codingParams)
-                    if not data: break  # we hit the end of the input file
-                    outFile.WriteDataBlock(data, codingParams)
+                    if Direction == "Encode":
+                        data = inFile.ReadDataBlock(codingParams)
+
+                        if not data:
+                            nextBlockHasTransient = False
+                        else:
+                            lookahead = np.concatenate((np.copy(data), lookahead[:,codingParams.nSamplesPerBlock:]), axis=1)
+                            nextBlockHasTransient = parTransientDetect(lookahead)
+
+                        outFile.WriteDataBlock(lookahead[:,:codingParams.nSamplesPerBlock], codingParams,
+                                               lastTrans=lastBlockHadTransient, curTrans=curBlockHasTransient, nextTrans=nextBlockHasTransient)
+                        lastBlockHadTransient = curBlockHasTransient
+                        curBlockHasTransient = nextBlockHasTransient
+
+                        if not data: break
+
+                    else:
+                        data = inFile.ReadDataBlock(codingParams)
+                        if not data: break  # we hit the end of the input file
+                        outFile.WriteDataBlock(data, codingParams)
+                    
                     print(
                         ".",
                         end="")  # just to signal how far we've gotten to user

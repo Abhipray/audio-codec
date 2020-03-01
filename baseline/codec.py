@@ -9,7 +9,7 @@ codec.py -- The actual encode/decode functions for the perceptual audio codec
 import numpy as np  # used for arrays
 
 # used by Encode and Decode
-from window import SineWindow  # current window used for MDCT -- implement KB-derived?
+from window import SineWindow, StartWindow, StartStopWindow, StopWindow, TestShortWindow  # current window used for MDCT -- implement KB-derived?
 from mdct import MDCT, IMDCT  # fast MDCT implementation (uses numpy FFT)
 from quantize import *  # using vectorized versions (to use normal versions, uncomment lines 18,67 below defining vMantissa and vDequantize)
 
@@ -17,8 +17,24 @@ from quantize import *  # using vectorized versions (to use normal versions, unc
 from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
 from bitalloc import *  #allocates bits to scale factor bands given SMRs
 
+SHORT=256
+def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
+    if curTrans:
+        return lambda x: TestShortWindow(x, Nlong, SHORT)
 
-def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams):
+    if lastTrans and nextTrans:
+        return lambda x: StartStopWindow(x, Nlong, SHORT)
+
+    if lastTrans:
+        return lambda x: StopWindow(x, Nlong, SHORT)
+
+    if nextTrans:
+        return lambda x: StartWindow(x, Nlong, SHORT)
+
+    return SineWindow
+
+def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams,
+           lastTrans=False, curTrans=False, nextTrans=False):
     """Reconstitutes a single-channel block of encoded data into a block of
     signed-fraction data based on the parameters in a PACFile object"""
 
@@ -41,14 +57,15 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams):
     mdctLine /= rescaleLevel  # put overall gain back to original level
 
     # IMDCT and window the data for this channel
-    data = SineWindow(IMDCT(mdctLine, halfN,
+    window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
+    data = window(IMDCT(mdctLine, halfN,
                             halfN))  # takes in halfN MDCT coeffs
 
     # end loop over channels, return reconstituted time samples (pre-overlap-and-add)
     return data
 
 
-def Encode(data, codingParams):
+def Encode(data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
     """Encodes a multi-channel block of signed-fraction data based on the parameters in a PACFile object"""
     scaleFactor = []
     bitAlloc = []
@@ -66,7 +83,7 @@ def Encode(data, codingParams):
     return (scaleFactor, bitAlloc, mantissa, overallScaleFactor)
 
 
-def EncodeSingleChannel(data, codingParams):
+def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
     """Encodes a single-channel block of signed-fraction data based on the parameters in a PACFile object"""
 
     # prepare various constants
@@ -91,7 +108,8 @@ def EncodeSingleChannel(data, codingParams):
 
     # window data for side chain FFT and also window and compute MDCT
     timeSamples = data
-    mdctTimeSamples = SineWindow(data)
+    window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
+    mdctTimeSamples = window(data)
     mdctLines = MDCT(mdctTimeSamples, halfN, halfN)[:halfN]
 
     # compute overall scale factor for this block and boost mdctLines using it
