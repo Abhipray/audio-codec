@@ -20,7 +20,7 @@ from bitalloc import *  #allocates bits to scale factor bands given SMRs
 SHORT=256
 def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
     if curTrans:
-        return lambda x: TestShortWindow(x, Nlong, SHORT)
+        return SineWindow # lambda x: TestShortWindow(x, Nlong, SHORT)
 
     if lastTrans and nextTrans:
         return lambda x: StartStopWindow(x, Nlong, SHORT)
@@ -38,6 +38,11 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams,
     """Reconstitutes a single-channel block of encoded data into a block of
     signed-fraction data based on the parameters in a PACFile object"""
 
+    if curTrans:
+        sfBands = codingParams.sfBandsShort
+    else:
+        sfBands = codingParams.sfBands
+
     rescaleLevel = 1. * (1 << overallScaleFactor)
     halfN = codingParams.nMDCTLines
     N = 2 * halfN
@@ -47,8 +52,8 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams,
     # reconstitute the first halfN MDCT lines of this channel from the stored data
     mdctLine = np.zeros(halfN, dtype=np.float64)
     iMant = 0
-    for iBand in range(codingParams.sfBands.nBands):
-        nLines = codingParams.sfBands.nLines[iBand]
+    for iBand in range(sfBands.nBands):
+        nLines = sfBands.nLines[iBand]
         if bitAlloc[iBand]:
             mdctLine[iMant:(iMant + nLines)] = vDequantize(
                 scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
@@ -74,7 +79,7 @@ def Encode(data, codingParams, lastTrans=False, curTrans=False, nextTrans=False)
 
     # loop over channels and separately encode each one
     for iCh in range(codingParams.nChannels):
-        (s, b, m, o) = EncodeSingleChannel(data[iCh], codingParams)
+        (s, b, m, o) = EncodeSingleChannel(data[iCh], codingParams, lastTrans, curTrans, nextTrans)
         scaleFactor.append(s)
         bitAlloc.append(b)
         mantissa.append(m)
@@ -95,7 +100,10 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
     )  # 1 isn't an allowed bit allocation so n size bits counts up to 2^n
     if maxMantBits > 16:
         maxMantBits = 16  # to make sure we don't ever overflow mantissa holders
-    sfBands = codingParams.sfBands
+    if curTrans:
+        sfBands = codingParams.sfBandsShort
+    else:
+        sfBands = codingParams.sfBands
     # vectorizing the Mantissa function call
     vMantissa = np.vectorize(Mantissa)
 

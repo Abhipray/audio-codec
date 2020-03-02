@@ -81,6 +81,9 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
     while True:
         valid = np.logical_not(flagged)
         N = np.sum(nLines[valid]) # consider only lines that will be encoded
+        if N == 0:
+            return bits
+            
         # optimal allocation
         Ropt = bitBudget / N + \
             (1.0/ DBTOBITS) * (SMR[valid] - np.sum(nLines[valid]*SMR[valid]) / N)
