@@ -108,6 +108,7 @@ from detect_transients import parTransientDetect
 from psychoac import ScaleFactorBands, AssignMDCTLinesFromFreqLimits  # defines the grouping of MDCT lines into scale factor bands
 from pathlib import Path
 import os
+import matplotlib.pyplot as plt
 
 import numpy as np  # to allow conversion of data blocks to numpy's array object
 MAX16BITS = 32767
@@ -245,11 +246,11 @@ class PACFile(AudioFile):
                 codingParams.nMDCTLines = short
 
                 decodedData = np.zeros(2*long)
-                for n in range(7):
+                for n in range(15):
                     dataShort = self.getDecodedBlock(pb, codingParams, lastTrans, curTrans, nextTrans)
                     # print(len(dataShort))
                     # print(len(decodedData[n*short:n*short+2*short]))
-                    decodedData[n*short:n*short+2*short] = dataShort
+                    decodedData[n*short:n*short+2*short] += dataShort
 
                 codingParams.nSamplesPerBlock = long
                 codingParams.nMDCTLines = long
@@ -376,7 +377,7 @@ class PACFile(AudioFile):
             bitAllocs = []
             mantissas = []
             overallScaleFactors = []
-            for n in range(0, long-short, short):
+            for n in range(0, 2*long-short, short):
                 shortBlock = []
                 for iCh in range(codingParams.nChannels):
                     shortBlock.append(fullBlockData[iCh][n:n+2*short])

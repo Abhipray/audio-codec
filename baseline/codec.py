@@ -20,7 +20,7 @@ from bitalloc import *  #allocates bits to scale factor bands given SMRs
 SHORT=256
 def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
     if curTrans:
-        return SineWindow # lambda x: TestShortWindow(x, Nlong, SHORT)
+        return lambda x: SineWindow(x) # lambda x: TestShortWindow(x, Nlong, SHORT)
 
     if lastTrans and nextTrans:
         return lambda x: StartStopWindow(x, Nlong, SHORT)
