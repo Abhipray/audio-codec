@@ -246,11 +246,10 @@ class PACFile(AudioFile):
                 codingParams.nMDCTLines = short
 
                 decodedData = np.zeros(2*long)
-                for n in range(15):
+                pad = long // 2 - short // 2
+                for n in range(pad, 2*long-short-pad, short):
                     dataShort = self.getDecodedBlock(pb, codingParams, lastTrans, curTrans, nextTrans)
-                    # print(len(dataShort))
-                    # print(len(decodedData[n*short:n*short+2*short]))
-                    decodedData[n*short:n*short+2*short] += dataShort
+                    decodedData[n:n+2*short] += dataShort
 
                 codingParams.nSamplesPerBlock = long
                 codingParams.nMDCTLines = long
@@ -294,13 +293,6 @@ class PACFile(AudioFile):
         codingParams.sfBands = sfBands
         codingParams.sfBandsShort = ScaleFactorBands(
             AssignMDCTLinesFromFreqLimits(128, codingParams.sampleRate))
-        # print(codingParams.sfBandsShort.nLines)
-        # print(codingParams.sfBandsShort.lowerLine)
-        # print(codingParams.sfBandsShort.upperLine+1)
-        # test = np.zeros(128)
-        # t0 = test[codingParams.sfBandsShort.lowerLine[1]:codingParams.sfBandsShort.upperLine[1]+1]
-        # print(t0)
-        # exit()
         self.fp.write(pack('<L', sfBands.nBands))
         self.fp.write(
             pack('<' + str(sfBands.nBands) + 'H', *(sfBands.nLines.tolist())))
@@ -377,9 +369,15 @@ class PACFile(AudioFile):
             bitAllocs = []
             mantissas = []
             overallScaleFactors = []
-            for n in range(0, 2*long-short, short):
+            pad = long // 2 - short // 2
+            for n in range(pad, 2*long-short-pad, short):
                 shortBlock = []
                 for iCh in range(codingParams.nChannels):
+                    if np.all(fullBlockData[iCh][n:n+2*short] == 0):
+                        codingParams.nSamplesPerBlock = long
+                        codingParams.nMDCTLines = long
+                        return
+
                     shortBlock.append(fullBlockData[iCh][n:n+2*short])
 
                 (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(

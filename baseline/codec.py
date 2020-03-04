@@ -31,7 +31,7 @@ def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
     if nextTrans:
         return lambda x: StartWindow(x, Nlong, SHORT)
 
-    return SineWindow
+    return lambda x: SineWindow(x)
 
 def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams,
            lastTrans=False, curTrans=False, nextTrans=False):

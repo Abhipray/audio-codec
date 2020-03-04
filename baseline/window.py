@@ -64,8 +64,10 @@ def StartWindow(dataSampleArray, N_long, N_short):
     with the correct window to start an Edler Block
     Switch
     """
-    window = np.concatenate((SineWindow(np.ones(N_long))[:N_long//2], SineWindow(np.ones(N_short))[N_short//2:],
-             np.zeros(N_long - (N_long + N_short)//2)))
+    pad = N_long // 4 - N_short // 4
+    window = np.concatenate((SineWindow(np.ones(N_long))[:N_long//2], np.ones(pad),
+        SineWindow(np.ones(N_short))[N_short//2:], np.zeros(pad)))
+
     return window * dataSampleArray
 
 def StopWindow(dataSampleArray, N_long, N_short):
@@ -83,8 +85,10 @@ def StartStopWindow(dataSampleArray, N_long, N_short):
     with the correct window to transition between two
     "short window" blocks
     """
-    zeroN = (N_long - N_short) // 2
-    window = np.concatenate((np.zeros(zeroN), SineWindow(np.ones(N_short)), np.zeros(zeroN)))
+    pad = N_long // 4 - N_short // 4
+    window = np.concatenate((np.zeros(pad), SineWindow(np.ones(N_short))[:N_short//2],
+        np.ones(2*pad), SineWindow(np.ones(N_short))[N_short//2:], np.zeros(pad)))
+
     return window * dataSampleArray
 
 def TestShortWindow(dataSampleArray, N_long, N_short):

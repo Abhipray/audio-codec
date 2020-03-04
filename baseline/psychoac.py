@@ -186,6 +186,10 @@ def getMaskedThreshold(data, MDCTdata, MDCTscale, sampleRate, sfBands):
             lower = sfBands.lowerLine[z]
             upper = sfBands.upperLine[z] + 1
             intensities = norm * abs(x_fft[lower:upper])**2
+            
+            if np.all(intensities == 0):
+                continue
+
             spl = SPL(intensities.sum())
             avg_freq = np.sum(
                 intensities * x_fftfreq[lower:upper]) / intensities.sum()
