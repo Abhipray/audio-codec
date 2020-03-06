@@ -62,6 +62,7 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams
     vDequantize = np.vectorize(Dequantize)
 
     # reconstitute the first halfN MDCT lines of this channel from the stored data
+    vDQFP = np.vectorize(DequantizeFP)
     mdctLine = np.zeros(halfN, dtype=np.float64)
     iMant = 0
     for iBand in range(codingParams.sfBands.nBands):
@@ -70,8 +71,8 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams
             if iBand in codingParams.omittedBands:
 
                 # setting the whole band to a scalar value
-                mdctLine[iMant:(iMant + nLines)] = vDequantize(
-                    scaleFactor[iBand], mantissa[iMant:(iMant + 1)],
+                mdctLine[iMant:(iMant + nLines)] = vDQFP(
+                    scaleFactor[iBand], mantissa[codingParams.sfBands.lowerLine[iBand]:(codingParams.sfBands.upperLine[iBand] + 1)],
                     codingParams.nScaleBits, bitAlloc[iBand])
                 iMant += 1
             else:
@@ -117,7 +118,7 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams
     for iBand in codingParams.omittedBands:
         if np.max(np.abs(mdctLine[codingParams.sfBands.lowerLine[iBand]:codingParams.sfBands.upperLine[iBand]+1])) > 0:
             mdctLine[codingParams.sfBands.lowerLine[iBand]:codingParams.sfBands.upperLine[iBand]+1] *= \
-                smoothed_envelope[codingParams.sfBands.lowerLine[iBand]-omit_cutoff:codingParams.sfBands.upperLine[iBand]+1-omit_cutoff]/np.max(np.abs(mdctLine[codingParams.sfBands.lowerLine[iBand]:codingParams.sfBands.upperLine[iBand]+1]))
+                smoothed_envelope[codingParams.sfBands.lowerLine[iBand]-omit_cutoff:codingParams.sfBands.upperLine[iBand]+1-omit_cutoff]/np.mean(np.abs(mdctLine[codingParams.sfBands.lowerLine[iBand]:codingParams.sfBands.upperLine[iBand]+1]))
 
     #plt.figure(figsize=(12, 8))
     #plt.title('MDCT Lines with envelope adjustment')
@@ -127,7 +128,7 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams
     # add some noise to these high frequency components to sound a bit more natural
     # need to tune scale, which is the standard deviation of each sample
     # right now, the standard deviation of the noise depends on the amplitude of the frequency line (should make sense, right?)
-    mdctLine[omit_cutoff:] += np.random.normal(loc=np.zeros(num_omitted), scale=abs(mdctLine[omit_cutoff:])/100, size=num_omitted)
+    # mdctLine[omit_cutoff:] += np.random.normal(loc=np.zeros(num_omitted), scale=abs(mdctLine[omit_cutoff:])/100, size=num_omitted)
     
     
     #plt.figure(figsize=(12, 8))
@@ -322,7 +323,7 @@ def EncodeSingleChannel_SBR(data, codingParams):
             iBand] + 1  # extra value is because slices don't include last value
         nLines = sfBands.nLines[iBand]
         
-        scaleLine = np.max(np.abs(mdctLines[lowLine:highLine]))
+        scaleLine = np.mean(np.abs(mdctLines[lowLine:highLine]))
 
         scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
                                          bitAlloc[iBand])
