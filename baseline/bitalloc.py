@@ -5,6 +5,8 @@ from window import *
 from psychoac import *
 from quantize import *
 
+SBR_FACTOR = 2
+
 # Question 1.b)
 def BitAllocUniform(bitBudget, maxMantBits, nBands, nLines, SMR=None):
     """
@@ -56,7 +58,7 @@ def BitAllocConstNMR(bitBudget, maxMantBits, nBands, nLines, SMR):
 
 
 # Question 1.c)
-DBTOBITS=6
+DBTOBITS=6.2
 def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
     """
     Allocates bits to scale factor bands so as to flatten the NMR across the spectrum
@@ -109,6 +111,33 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
 
     return bits
 
+def BitAlloc_SBR(bitBudget, maxMantBits, nBands, nLines, SMR, omittedBands):
+    """
+    Allocates bits to scale factor bands so as to flatten the NMR across the spectrum
+    Accounts for spectral band replication by applying maxMantBits for each band over
+    the SBR threshold. This is because for each of these bands, we will only send one
+    floating point number to encapsulate the spectral envelope. 
+
+       Arguments:
+           bitBudget is total number of mantissa bits to allocate
+           maxMantBits is max mantissa bits that can be allocated per line
+           nBands is total number of scale factor bands
+           nLines[nBands] is number of lines in each scale factor band
+           SMR[nBands] is signal-to-mask ratio in each scale factor band
+           omittedBands is the list of band indices which are not being sent b/c they will be reconstructed via SBR
+
+        Returns:
+            bits[nBands] is number of bits allocated to each scale factor band    
+    """
+    # sanity check
+    if maxMantBits > 16: maxMantBits = 16
+
+    bitBudget -= len(omittedBands)*maxMantBits
+    remaining_bands = nBands - len(omittedBands)
+    bits_normal = BitAlloc(bitBudget, maxMantBits, remaining_bands, nLines[:remaining_bands], SMR[:remaining_bands])
+    bits_extend = np.ones(len(omittedBands))*maxMantBits
+    return np.concatenate((bits_normal, bits_extend)).astype(np.int32)
+
 #-----------------------------------------------------------------------------
 
 #Testing code
@@ -127,50 +156,14 @@ if __name__ == "__main__":
     X_spl = SPL(intensity)
     dct_freqs = np.fft.rfftfreq(N-1, d=1/Fs)
 
-    barks = Bark(dct_freqs)
-    peak_spls = np.zeros(N//2)
-    peaks_dumb = []
-    cur_peak = -100
-    cur_bark = 0
-    last_bark_ind = 0
-    for i, b in enumerate(barks):
-        if np.floor(b) > cur_bark:
-            cur_bark = np.floor(b)
-            peak_spls[last_bark_ind:i] = cur_peak
-            peaks_dumb.append(cur_peak)
-
-            cur_peak = -100
-            last_bark_ind = i
-        
-        if X_spl[i] > cur_peak:
-            cur_peak = X_spl[i]
-    
-    peak_spls[last_bark_ind:] = cur_peak
-    peaks_dumb.append(cur_peak)
-
-    mask = getMaskedThreshold(x, X, 0, Fs, None)[:-1]
-    mask_bark = []
-    cur_mask = mask[0]
-    cur_bark = 0
-    for i, b in enumerate(barks):
-        if np.floor(b) > cur_bark:
-            cur_bark = np.floor(b)
-            mask_bark.append(cur_mask)
-            cur_mask = mask[i]
-        
-        if mask[i] > cur_mask:
-            cur_mask = mask[i]
-    mask_bark.append(cur_mask)
-
     # Problem 1.c
     budget = 1711 # 128 kb/s/ch
     nLines = AssignMDCTLinesFromFreqLimits(N//2, Fs)
     sfBands = ScaleFactorBands(nLines)
-    smr = np.asarray(peaks_dumb) - np.asarray(mask_bark)
-    # smr = CalcSMRs(x, X, 0, Fs, sfBands)
+    smr = CalcSMRs(x, X, 0, Fs, sfBands)
 
     bAllocUniform = { 'bits': BitAllocUniform(budget, 16, 25, nLines), 'title': 'Noise Floor (128 kb/s, Uniform Allocation)' }
-    bAllocSNR = { 'bits': BitAllocConstSNR(budget, 16, 25, nLines, peaks_dumb), 'title': 'Noise Floor (128 kb/s, Const SNR Allocation)' }
+    bAllocSNR = { 'bits': BitAllocConstSNR(budget, 16, 25, nLines, smr), 'title': 'Noise Floor (128 kb/s, Const SNR Allocation)' }
     bAllocNMR = { 'bits': BitAllocConstNMR(budget, 16, 25, nLines, smr), 'title': 'Noise Floor (128 kb/s, Const NMR Allocation)' }
 
     def plotNoiseFloor(floor, title=''):
@@ -185,40 +178,20 @@ if __name__ == "__main__":
         plt.title(title)
         plt.ylim(-30, 100)
 
-    def doForStuff(listOfStuff):
-        for bAlloc in listOfStuff:
-            print(bAlloc['title'])
-            print(bAlloc['bits'])
-
-            noise_floor = np.zeros(N//2)
-            last_bark_ind = 0
-            cur_bark = 0
-            for i, b in enumerate(barks):
-                if np.floor(b) > cur_bark:
-                    cur_bark = int(np.floor(b))
-                    noise_floor[last_bark_ind:i] = peak_spls[i-1] - 6 * bAlloc['bits'][cur_bark-1]
-                    last_bark_ind = i
-
-            noise_floor[last_bark_ind:] = peak_spls[-1]
-            plotNoiseFloor(noise_floor, bAlloc['title'])
-
-    # doForStuff([bAllocUniform, bAllocSNR, bAllocNMR])
-    doForStuff([bAllocNMR])
-
     # Problem 1.d
-    budget = 1852 # 196 kb/s/ch
+    budget = 1711 # 196 kb/s/ch
 
     bAllocUniform = { 'bits': BitAllocUniform(budget, 16, 25, nLines), 'title': 'Noise Floor (192 kb/s, Uniform Allocation)' }
-    bAllocSNR = { 'bits': BitAllocConstSNR(budget, 16, 25, nLines, peaks_dumb), 'title': 'Noise Floor (192 kb/s, Const SNR Allocation)' }
+    bAllocSNR = { 'bits': BitAllocConstSNR(budget, 16, 25, nLines, smr), 'title': 'Noise Floor (192 kb/s, Const SNR Allocation)' }
     bAllocNMR = { 'bits': BitAllocConstNMR(budget, 16, 25, nLines, smr), 'title': 'Noise Floor (192 kb/s, Const NMR Allocation)' }
 
     # doForStuff([bAllocUniform, bAllocSNR, bAllocNMR])
-    doForStuff([bAllocNMR])
 
 
     # Problem 2.a
-    bAllocReal = { 'bits': BitAlloc(budget, 16, 25, nLines, smr), 'title': 'Real BitAlloc (192 kb/s, Uniform Allocation)' }
+    bAllocReal = { 'bits': BitAlloc_SBR(budget, 16, 25, nLines, smr), 'title': 'Real BitAlloc (192 kb/s, Uniform Allocation)' }
     # doForStuff([bAllocReal])
+    print(bAllocReal)
 
     # ScaleFactor
     # vMantissa()

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-# import pandas as pd
+import pandas as pd
 from window import *
 from scipy.signal import find_peaks
 
@@ -11,6 +11,12 @@ def SPL(intensity):
     """
     Returns the SPL corresponding to intensity 
     """
+    if len(intensity.shape) ==0:
+        if intensity == 0:
+            return -30
+    else:
+        intensity[intensity ==0] = 1e-8
+
     spl = 96 + 10 * np.log10(abs(intensity))
     if type(intensity) is np.ndarray:
         spl[spl < -30] = -30
@@ -366,7 +372,7 @@ if __name__ == "__main__":
     bark_freqs = np.array([
         0, 100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480, 1720,
         2000, 2320, 2700, 3150, 3700, 4400, 5300, 6400, 7700, 9500, 12000,
-        15500
+        15500, 24000
     ])
     barks = Bark(bark_freqs)
     print(
