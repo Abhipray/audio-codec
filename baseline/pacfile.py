@@ -139,7 +139,7 @@ class PACFile(AudioFile):
         nLines = unpack('<' + str(nBands) + 'H',
                         self.fp.read(calcsize('<' + str(nBands) + 'H')))
         sfBands = ScaleFactorBands(nLines)
-        sfBandsShort = ScaleFactorBands(128)
+        sfBandsShort = ScaleFactorBands(AssignMDCTLinesFromFreqLimits(128, codingParams.sampleRate))
         # load up a CodingParams object with the header data
         myParams = CodingParams()
         myParams.sampleRate = sampleRate

@@ -4,10 +4,12 @@ from  scipy.io import wavfile
 import scipy.signal as signal
 from window import SineWindow, HanningWindow, StartWindow, StartStopWindow, StopWindow, TestShortWindow
 
+fs, xz = wavfile.read('test_decoded2/castanet_128zz.wav')
 fs, x = wavfile.read('test_decoded2/castanet_128.wav')
 fs, y = wavfile.read('test_signals/castanet.wav')
 
 x = x[:,0] / 2**15
+xz = xz[:,0] / 2**15
 y = y[:,0] / 2**15
 
 def window_test():
@@ -50,6 +52,8 @@ def waveform_test(x):
 
 # window_test()
 # specgram_test(x, y)
+# waveform_test(y)
 waveform_test(x)
+waveform_test(xz)
 
 plt.show()

@@ -108,7 +108,8 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
     vMantissa = np.vectorize(Mantissa)
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
-    bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
+    NforBitBudget = 512 if curTrans else halfN
+    bitBudget = codingParams.targetBitsPerSample * NforBitBudget  # this is overall target bit rate
     bitBudget -= nScaleBits * (
         sfBands.nBands + 1
     )  # less scale factor bits (including overall scale factor)
