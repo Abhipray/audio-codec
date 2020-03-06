@@ -23,7 +23,7 @@ def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
         return lambda x: SineWindow(x) # lambda x: TestShortWindow(x, Nlong, SHORT)
 
     if lastTrans and nextTrans:
-        return lambda x: SineWindow(x) # StartStopWindow(x, Nlong, SHORT)
+        return lambda x: StartStopWindow(x, Nlong, SHORT)
 
     if lastTrans:
         return lambda x: StopWindow(x, Nlong, SHORT)
