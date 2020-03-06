@@ -23,7 +23,7 @@ def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
         return lambda x: SineWindow(x) # lambda x: TestShortWindow(x, Nlong, SHORT)
 
     if lastTrans and nextTrans:
-        return lambda x: StartStopWindow(x, Nlong, SHORT)
+        return lambda x: SineWindow(x) # StartStopWindow(x, Nlong, SHORT)
 
     if lastTrans:
         return lambda x: StopWindow(x, Nlong, SHORT)
@@ -108,7 +108,7 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
     vMantissa = np.vectorize(Mantissa)
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
-    NforBitBudget = 512 if curTrans else halfN
+    NforBitBudget = 256 if curTrans else halfN
     bitBudget = codingParams.targetBitsPerSample * NforBitBudget  # this is overall target bit rate
     bitBudget -= nScaleBits * (
         sfBands.nBands + 1

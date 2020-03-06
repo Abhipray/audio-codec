@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
-def parTransientDetect(block, thresh=15, axis=1):
+def parTransientDetect(block, thresh=6.4, axis=1):
     """
     Use simple peak-to-avg ratio method to detect transients
     """
