@@ -58,6 +58,48 @@ def KBDWindow(dataSampleArray, alpha=4.):
     return dataSampleArray * window
     ### YOUR CODE ENDS HERE ###
 
+def StartWindow(dataSampleArray, N_long, N_short):
+    """
+    Returns a copy of dataSampleArray Sine-Windowed
+    with the correct window to start an Edler Block
+    Switch
+    """
+    pad = N_long // 4 - N_short // 4
+    window = np.concatenate((SineWindow(np.ones(N_long))[:N_long//2], np.ones(pad),
+        SineWindow(np.ones(N_short))[N_short//2:], np.zeros(pad)))
+
+    return window * dataSampleArray
+
+def StopWindow(dataSampleArray, N_long, N_short):
+    """
+    Returns a copy of dataSampleArray Sine-Windowed
+    with the correct window to stop an Edler Block
+    Switch
+    """
+    window = np.flip(StartWindow(np.ones(N_long), N_long, N_short))
+    return window * dataSampleArray
+
+def StartStopWindow(dataSampleArray, N_long, N_short):
+    """
+    Returns a copy of dataSampleArray Sine-Windowed
+    with the correct window to transition between two
+    "short window" blocks
+    """
+    pad = N_long // 4 - N_short // 4
+    window = np.concatenate((np.zeros(pad), SineWindow(np.ones(N_short))[:N_short//2],
+        np.ones(2*pad), SineWindow(np.ones(N_short))[N_short//2:], np.zeros(pad)))
+
+    return window * dataSampleArray
+
+def TestShortWindow(dataSampleArray, N_long, N_short):
+    """
+    Returns a copy of dataSampleArray Sine-Windowed
+    with a window instead of the short windows to be used
+    later
+    """
+    zeroN = N_long - N_short
+    window = np.concatenate((SineWindow(np.ones(N_short))[:N_short//2], np.zeros(zeroN), SineWindow(np.ones(N_short))[N_short//2:]))
+    return window * dataSampleArray
 
 #-----------------------------------------------------------------------------
 

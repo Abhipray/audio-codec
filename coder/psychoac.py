@@ -133,15 +133,18 @@ class ScaleFactorBands:
         of lines in each band
         """
         self.nLines = np.array(nLines, dtype=np.int)
-        self.nBands = len(nLines)
+        arg_zeros = np.argwhere(self.nLines == 0)
+        self.nLines = np.delete(self.nLines, arg_zeros)
+
+        self.nBands = len(self.nLines)
 
         self.lowerLine = np.zeros((self.nBands, ), dtype=np.int)
         self.upperLine = np.zeros((self.nBands, ), dtype=np.int)
 
-        for i in range(1, len(nLines)):
-            self.lowerLine[i] = self.lowerLine[i - 1] + nLines[i - 1]
+        for i in range(1, len(self.nLines)):
+            self.lowerLine[i] = self.lowerLine[i - 1] + self.nLines[i - 1]
 
-        self.upperLine = (self.lowerLine + nLines - 1).astype(np.int)
+        self.upperLine = (self.lowerLine + self.nLines - 1).astype(np.int)
 
 
 def getMaskedThreshold(data, MDCTdata, MDCTscale, sampleRate, sfBands):
@@ -183,6 +186,10 @@ def getMaskedThreshold(data, MDCTdata, MDCTscale, sampleRate, sfBands):
             lower = sfBands.lowerLine[z]
             upper = sfBands.upperLine[z] + 1
             intensities = norm * abs(x_fft[lower:upper])**2
+            
+            if np.all(intensities == 0):
+                continue
+
             spl = SPL(intensities.sum())
             avg_freq = np.sum(
                 intensities * x_fftfreq[lower:upper]) / intensities.sum()

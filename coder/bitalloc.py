@@ -78,9 +78,13 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
     flagged = np.zeros(nBands, dtype=bool)
     Nflip = 0 # index to find needle for round
     level_flip = 0. # needle for round
+    count = 0
     while True:
         valid = np.logical_not(flagged)
         N = np.sum(nLines[valid]) # consider only lines that will be encoded
+        if N == 0:
+            N += 1e-12
+            
         # optimal allocation
         Ropt = bitBudget / N + \
             (1.0/ DBTOBITS) * (SMR[valid] - np.sum(nLines[valid]*SMR[valid]) / N)
@@ -106,6 +110,11 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
             break
         if(np.logical_xor(flagged, valid).all() & (np.sum(np.multiply(bits, nLines)) > bitBudget)):
             Nflip += 1
+        
+        count += 1
+        if count > 200:
+            # print('stuck in loop!')
+            break
 
     return bits
 
