@@ -383,9 +383,9 @@ class PACFile(AudioFile):
 
 #-----------------------------------------------------------------------------
 
-input_dir = Path('test_signals')
-output_dir = Path('test_decoded2')
-bitrates = [128, 192]
+input_dir = Path('../test_signals')
+output_dir = Path('../test_decoded')
+bitrates = [128]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -426,7 +426,7 @@ if __name__ == "__main__":
                     codingParams.nMDCTLines = 1024
                     codingParams.nScaleBits = 4
                     codingParams.nMantSizeBits = 16
-                    codingParams.targetBitsPerSample = data_rate / 48
+                    codingParams.targetBitsPerSample = data_rate / (codingParams.sampleRate / 1000)
                     # tell the PCM file how large the block size is
                     codingParams.nSamplesPerBlock = codingParams.nMDCTLines
                 else:  # "Decode"
