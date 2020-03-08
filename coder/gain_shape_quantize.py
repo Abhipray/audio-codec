@@ -1,12 +1,23 @@
 """Functions and classes to perform gain-shape quantization of a vector.
+@author Abhipray Sahoo (abhiprays@gmail.com)
 
 The gain is quantized using mu-law companding followed by uniform quantization.
 The shape is quantized using a normalized pyramid vector quantization codebook (PVQ).
 
-@author Abhipray Sahoo (abhiprays@gmail.com)
+The PVQ codebook is defined as set of vectors y: {y: sum(y_i) = K}. It can be thought of
+as placing K unit-pulses at different dimensions of the vector y to achieve the sum K.
+
+Symbols and definitions:
+L = number of dimensions of vector
+K = number of pulses
+N(L,K) = number of vectors in PVQ codebook for given vector dimension and K
+S(L,K) = set of PVQ codebook vector for given vector dimension L and K
+R = rate (or number of bits) per dimensions
+
 """
 
 import numpy as np
+from quantize import QuantizeUniform, DequantizeUniform
 
 
 def pvq_search(x: np.array, k: int):
@@ -22,15 +33,15 @@ def pvq_search(x: np.array, k: int):
     """
     x_l1 = np.sum(np.abs(x))
     x_hat = k * x / x_l1
-    return x_hat, np.round(x_hat)
+    return x_hat.astype(np.int), np.round(x_hat).astype(np.int)
 
 
-def gain_shape_alloc(R, N, k_fine):
+def gain_shape_alloc(R, L, k_fine):
     """Given a total number of bits, calculate the number of bits for the gain-shape quantization"""
-    R_shape = R / N + 0.5 * np.log2(N) - k_fine
-    R_shape = np.round(R_shape)
+    R_shape = R / L + 0.5 * np.log2(L) - k_fine
+    R_shape = np.floor(R_shape)
     R_gain = R - R_shape
-    return R_gain, R_shape
+    return int(R_gain), int(R_shape)
 
 
 def pvq_codebook_size(L, K, N=None):
@@ -133,17 +144,79 @@ def decode_pvq_vector(b, L, K, N):
     return x
 
 
-def pvq_compute_k(L: int, R: int):
-    """Given a rate R (number of bits), find the largest K (number of pulses) that satisfies log2(N(L, K)) <= R
+def pvq_compute_k_for_R(L: int, max_bits: int):
+    """Given a number of bits, find the largest K (number of pulses) that satisfies log2(N(L, K)) <= max_bits
     
     Args:
         L ([int]): 
         R ([int]): maximum number of bits
     """
-    largest_codebook_size = 2**R
+    largest_codebook_size = 2**max_bits
     k = 1
     while True:
         N = pvq_codebook_size(L, k)
         if N[L][k] > largest_codebook_size:
             return k - 1
         k += 1
+
+
+def mu_law_fn(x, mu=255):
+    return np.sign(x) * np.log(1 + mu * np.abs(x)) / np.log(1 + mu)
+
+
+def inv_mu_law_fn(y, mu=255):
+    return np.sign(y) / mu * ((1 + mu)**np.abs(y) - 1)
+
+
+def quantize_gain_shape(x, L, num_bits, k_fine=0):
+
+    # Allocate bits for gain and shape
+    bits_gain, bits_shape = gain_shape_alloc(num_bits, L, k_fine)
+    print(f'bits_gain: {bits_gain} bits_shape {bits_shape}')
+    # Separate gain and shape
+    gain = np.linalg.norm(x)
+    shape = x / gain
+
+    # Mu-law scalar quantize gain
+    y = mu_law_fn(gain)
+    print(f"original gain: {gain}")
+    gain_quantized = QuantizeUniform(y, bits_gain)
+
+    # Find k that satisfies R_shape
+    k = pvq_compute_k_for_R(L, bits_shape)
+
+    # PVQ the shape
+    _, codebook_vector = pvq_search(shape, k)
+
+    # Find index of codebook vector
+    N = pvq_codebook_size(L, k)
+
+    shape_quantized = encode_pvq_vector(codebook_vector, k, N)
+
+    # Combine gain and shape for the band into a single num_bits number
+    return gain_quantized, shape_quantized
+
+
+def dequantize_gain_shape(gain_quantized,
+                          shape_quantized,
+                          num_bits,
+                          L,
+                          k_fine=0):
+
+    bits_gain, bits_shape = gain_shape_alloc(num_bits, L, k_fine)
+    print(bits_gain, bits_shape)
+    # Reconstruct the gain
+    gain_unquantized = DequantizeUniform(gain_quantized, bits_gain)
+    gain = inv_mu_law_fn(gain_unquantized)
+    print(f"decoded gain:{gain}")
+
+    # Find k that satisfies R_shape
+    k = pvq_compute_k_for_R(L, bits_shape)
+
+    # Reconstruct the shape
+    N = pvq_codebook_size(L, k)
+    shape_unquantized = decode_pvq_vector(shape_quantized, L, k, N)
+    shape_unquantized = shape_unquantized / np.linalg.norm(
+        shape_unquantized.astype(np.float))
+
+    return gain * shape_unquantized
