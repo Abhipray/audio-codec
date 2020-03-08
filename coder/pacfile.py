@@ -134,8 +134,8 @@ class PACFile(AudioFile):
             raise RuntimeError(
                 "Tried to read a non-PAC file into a PACFile object")
         # use struct.unpack() to load up all the header data
-        (sampleRate, nChannels, numSamples, nMDCTLines, nScaleBits, nMantSizeBits) \
-                 = unpack('<LHLLHH',self.fp.read(calcsize('<LHLLHH')))
+        (sampleRate, nChannels, numSamples, nMDCTLines, nScaleBits, nMantSizeBits, useSBR) \
+                 = unpack('<LHLLHHH',self.fp.read(calcsize('<LHLLHHH')))
         nBands = unpack('<L', self.fp.read(calcsize('<L')))[0]
         nLines = unpack('<' + str(nBands) + 'H',
                         self.fp.read(calcsize('<' + str(nBands) + 'H')))
@@ -153,7 +153,7 @@ class PACFile(AudioFile):
         # add in scale factor band information
         myParams.sfBands = sfBands
         myParams.sfBandsShort = sfBandsShort
-        myParams.useSBR = True # @TODO: read from pac file
+        myParams.useSBR = bool(useSBR)
         myParams.omittedBands = omittedBands if myParams.useSBR else []
         # start w/o all zeroes as data from prior block to overlap-and-add for output
         overlapAndAdd = []
@@ -290,9 +290,10 @@ class PACFile(AudioFile):
         codingParams.numSamples += codingParams.nMDCTLines  # due to the delay in processing the first samples on both sides of the MDCT block
         # write the coded file attributes
         self.fp.write(
-            pack('<LHLLHH', codingParams.sampleRate, codingParams.nChannels,
+            pack('<LHLLHHH', codingParams.sampleRate, codingParams.nChannels,
                  codingParams.numSamples, codingParams.nMDCTLines,
-                 codingParams.nScaleBits, codingParams.nMantSizeBits))
+                 codingParams.nScaleBits, codingParams.nMantSizeBits,
+                 codingParams.useSBR))
         # create a ScaleFactorBand object to be used by the encoding process and write its info to header
         sfBands = ScaleFactorBands(
             AssignMDCTLinesFromFreqLimits(codingParams.nMDCTLines,
@@ -544,7 +545,7 @@ if __name__ == "__main__":
                     codingParams.nScaleBits = 4
                     codingParams.nMantSizeBits = 16
                     codingParams.targetBitsPerSample = data_rate / (codingParams.sampleRate / 1000)
-                    codingParams.useSBR = True # codingParams.targetBitsPerSample < 2.9 @TODO
+                    codingParams.useSBR = True if data_rate < 128 else False
                     # tell the PCM file how large the block size is
                     codingParams.nSamplesPerBlock = codingParams.nMDCTLines
                 else:  # "Decode"
