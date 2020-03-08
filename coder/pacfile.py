@@ -560,13 +560,8 @@ if __name__ == "__main__":
                 lookahead = np.zeros((codingParams.nChannels, 2*codingParams.nSamplesPerBlock))
                 curBlockHasTransient = False
                 lastBlockHadTransient = False
-                count = 0
                 while True:
                     if Direction == "Encode":
-                        if count > 500:
-                            break
-                        count += 1
-
                         data = inFile.ReadDataBlock(codingParams)
 
                         if not data:
