@@ -131,11 +131,18 @@ def BitAlloc_SBR(bitBudget, maxMantBits, nBands, nLines, SMR, omittedBands):
     """
     # sanity check
     if maxMantBits > 16: maxMantBits = 16
+    bits_extend = np.zeros(len(omittedBands))
 
-    bitBudget -= len(omittedBands)*maxMantBits
     remaining_bands = nBands - len(omittedBands)
+
+    # only transmit envelope if our signal is above the hearing threshold in the band--otherwise we are transmitting unneccessary noise, possibly
+    # taking bits from the lower frequencies when they need it
+    for b in omittedBands:
+        if SMR[b] > 0:
+            bitBudget-=maxMantBits
+            bits_extend[b-remaining_bands] = maxMantBits
+
     bits_normal = BitAlloc(bitBudget, maxMantBits, remaining_bands, nLines[:remaining_bands], SMR[:remaining_bands])
-    bits_extend = np.ones(len(omittedBands))*maxMantBits
     return np.concatenate((bits_normal, bits_extend)).astype(np.int32)
 
 #-----------------------------------------------------------------------------

@@ -405,7 +405,7 @@ class PACFile(AudioFile):
 
 input_dir = Path('../test_signals')
 output_dir = Path('../test_decoded2')
-bitrates = [128]
+bitrates = [96]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -418,8 +418,9 @@ if __name__ == "__main__":
 
     for data_rate in bitrates:
         for in_file in input_dir.glob('*.wav'):
-            for Direction in ("Encode", "Decode"):
-#            for Direction in ("Decode"):
+            print(in_file)
+            # for Direction in ("Encode", "Decode"):
+            for Direction in ["Decode"]:
                 print(f'Processing {in_file} at {data_rate}kbps')
                 # create the audio file objects
                 if Direction == "Encode":
