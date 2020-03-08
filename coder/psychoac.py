@@ -11,6 +11,12 @@ def SPL(intensity):
     """
     Returns the SPL corresponding to intensity 
     """
+    if len(intensity.shape) ==0:
+        if intensity == 0:
+            return -30
+    else:
+        intensity[intensity ==0] = 1e-8
+
     spl = 96 + 10 * np.log10(abs(intensity))
     if type(intensity) is np.ndarray:
         spl[spl < -30] = -30

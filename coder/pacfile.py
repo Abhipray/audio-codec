@@ -109,10 +109,11 @@ from psychoac import ScaleFactorBands, AssignMDCTLinesFromFreqLimits  # defines 
 from pathlib import Path
 import os
 import matplotlib.pyplot as plt
+from sbr import *
 
 import numpy as np  # to allow conversion of data blocks to numpy's array object
 MAX16BITS = 32767
-
+SBR_FACTOR = 2
 
 class PACFile(AudioFile):
     """
@@ -139,7 +140,8 @@ class PACFile(AudioFile):
         nLines = unpack('<' + str(nBands) + 'H',
                         self.fp.read(calcsize('<' + str(nBands) + 'H')))
         sfBands = ScaleFactorBands(nLines)
-        sfBandsShort = ScaleFactorBands(AssignMDCTLinesFromFreqLimits(128, codingParams.sampleRate))
+        sfBandsShort = ScaleFactorBands(AssignMDCTLinesFromFreqLimits(128, sampleRate))
+        omittedBands = omitted_bands(sfBands)
         # load up a CodingParams object with the header data
         myParams = CodingParams()
         myParams.sampleRate = sampleRate
@@ -151,6 +153,8 @@ class PACFile(AudioFile):
         # add in scale factor band information
         myParams.sfBands = sfBands
         myParams.sfBandsShort = sfBandsShort
+        myParams.useSBR = True # @TODO: read from pac file
+        myParams.omittedBands = omittedBands if myParams.useSBR else []
         # start w/o all zeroes as data from prior block to overlap-and-add for output
         overlapAndAdd = []
         for iCh in range(nChannels):
@@ -180,11 +184,14 @@ class PACFile(AudioFile):
                 codingParams.nScaleBits))  # scale factor for this band
             if bitAlloc[iBand]:
                 # if bits allocated, extract those mantissas and put in correct location in matnissa array
-                m = np.empty(sfBands.nLines[iBand], np.int32)
-                for j in range(sfBands.nLines[iBand]):
-                    m[j] = pb.ReadBits(
-                        bitAlloc[iBand]
-                    )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so encoded as 1 lower than actual allocation
+                if iBand in codingParams.omittedBands and not curTrans:
+                        m = pb.ReadBits(bitAlloc[iBand])
+                else:
+                    m = np.empty(sfBands.nLines[iBand], np.int32)
+                    for j in range(sfBands.nLines[iBand]):
+                        m[j] = pb.ReadBits(
+                            bitAlloc[iBand]
+                        )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so encoded as 1 lower than actual allocation
                 mantissa[sfBands.lowerLine[iBand]:(sfBands.upperLine[iBand] + 1)] = m
         # done unpacking data (end loop over scale factor bands)
 
@@ -293,6 +300,8 @@ class PACFile(AudioFile):
         codingParams.sfBands = sfBands
         codingParams.sfBandsShort = ScaleFactorBands(
             AssignMDCTLinesFromFreqLimits(128, codingParams.sampleRate))
+        omittedBands = omitted_bands(sfBands)
+        codingParams.omittedBands = omittedBands if codingParams.useSBR else []
         self.fp.write(pack('<L', sfBands.nBands))
         self.fp.write(
             pack('<' + str(sfBands.nBands) + 'H', *(sfBands.nLines.tolist())))
@@ -316,7 +325,11 @@ class PACFile(AudioFile):
             nBytes += codingParams.nMantSizeBits + codingParams.nScaleBits  # mantissa bit allocation and scale factor for that sf band
             if bitAlloc[iCh][iBand]:
                 # if non-zero bit allocation for this band, add in bits for scale factor and each mantissa (0 bits means zero)
-                nBytes += bitAlloc[iCh][iBand] * sfBands.nLines[iBand]  # no bit alloc = 1 so actuall alloc is one higher
+                if iBand in codingParams.omittedBands and not curTrans:
+                    nBytes += bitAlloc[iCh][iBand]
+                else:
+                    nBytes += bitAlloc[iCh][iBand] * sfBands.nLines[
+                        iBand]  # no bit alloc = 1 so actuall alloc is one higher
         
         return nBytes
 
@@ -336,9 +349,15 @@ class PACFile(AudioFile):
             pb.WriteBits(ba, codingParams.nMantSizeBits)  # bit allocation for this band (written as one less if non-zero)
             pb.WriteBits(scaleFactor[iCh][iBand], codingParams.nScaleBits)  # scale factor for this band (if bit allocation non-zero)
             if bitAlloc[iCh][iBand]:
-                for j in range(sfBands.nLines[iBand]):
-                    pb.WriteBits(mantissa[iCh][iMant + j], bitAlloc[iCh][iBand])  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so is 1 higher than the number
-                iMant += sfBands.nLines[iBand]  # add to mantissa offset if we passed mantissas for this band
+                if iBand in codingParams.omittedBands and not curTrans:
+                    pb.WriteBits(
+                        mantissa[iCh][iMant], bitAlloc[iCh][iBand]
+                    )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so is 1 higher than the number
+                    iMant += 1
+                else:
+                    for j in range(sfBands.nLines[iBand]):
+                        pb.WriteBits(mantissa[iCh][iMant + j], bitAlloc[iCh][iBand])  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so is 1 higher than the number
+                    iMant += sfBands.nLines[iBand]  # add to mantissa offset if we passed mantissas for this band
         # done packing (end loop over scale factor bands)
 
     def WriteDataBlock(self, data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
@@ -457,6 +476,9 @@ class PACFile(AudioFile):
         and the overall scale factor for each channel.
         """
         #Passes encoding logic to the Encode function defined in the codec module
+        if codingParams.useSBR and not curTrans:
+            return codec.Encode_SBR(data, codingParams, lastTrans, curTrans, nextTrans)
+        
         return codec.Encode(data, codingParams, lastTrans, curTrans, nextTrans)
 
     def Decode(self, scaleFactor, bitAlloc, mantissa, overallScaleFactor,
@@ -466,6 +488,11 @@ class PACFile(AudioFile):
         bit allocations, quantized mantissas, and overall scale factor.
         """
         #Passes decoding logic to the Decode function defined in the codec module
+        if codingParams.useSBR and not curTrans:
+            return codec.Decode_SBR(scaleFactor, bitAlloc, mantissa,
+                            overallScaleFactor, codingParams,
+                            lastTrans, curTrans, nextTrans)
+        
         return codec.Decode(scaleFactor, bitAlloc, mantissa,
                             overallScaleFactor, codingParams,
                             lastTrans, curTrans, nextTrans)
@@ -474,8 +501,8 @@ class PACFile(AudioFile):
 #-----------------------------------------------------------------------------
 
 input_dir = Path('../test_signals')
-output_dir = Path('../test_decoded')
-bitrates = [128]
+output_dir = Path('../test_decoded96')
+bitrates = [96]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -517,6 +544,7 @@ if __name__ == "__main__":
                     codingParams.nScaleBits = 4
                     codingParams.nMantSizeBits = 16
                     codingParams.targetBitsPerSample = data_rate / (codingParams.sampleRate / 1000)
+                    codingParams.useSBR = True # codingParams.targetBitsPerSample < 2.9 @TODO
                     # tell the PCM file how large the block size is
                     codingParams.nSamplesPerBlock = codingParams.nMDCTLines
                 else:  # "Decode"
@@ -532,8 +560,13 @@ if __name__ == "__main__":
                 lookahead = np.zeros((codingParams.nChannels, 2*codingParams.nSamplesPerBlock))
                 curBlockHasTransient = False
                 lastBlockHadTransient = False
+                count = 0
                 while True:
                     if Direction == "Encode":
+                        if count > 500:
+                            break
+                        count += 1
+
                         data = inFile.ReadDataBlock(codingParams)
 
                         if not data:
