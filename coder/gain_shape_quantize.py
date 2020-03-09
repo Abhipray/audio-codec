@@ -123,6 +123,73 @@ def decode_pvq_vector2(b, L, K, N):
     return x
 
 
+class decoder:
+    def __init__(self, b, L, K, N):
+        self.x = np.zeros((L, ), dtype=np.int)
+        self.i = 0
+        self.xb = 0
+        self.k = K
+        self.l = L
+        self.b = b
+        self.L = L
+        self.N = N
+
+    def step_5(self):
+        # global k, L, x
+        if self.k > 0:
+            # print('k', self.k)
+            self.x[self.L - 1] = self.k - abs(self.x[self.i])
+
+    def step_1(self):
+        if self.b == self.xb:
+            self.x[self.i] = 0
+            self.step_5()
+        else:
+            self.step_2()
+        return self.x
+
+    def step_4(self):
+        self.k = self.k - abs(self.x[self.i])
+        self.l -= 1
+        self.i += 1
+        if self.k > 0:
+            self.step_1()
+        else:
+            self.step_5()
+
+    def step_2(self):
+        if self.b < (self.xb + self.N[self.l - 1][self.k]):
+            self.x[self.i] = 0
+            self.step_4()
+        else:
+            self.xb += self.N[self.l - 1][self.k]
+            self.j = 1
+            self.step_3()
+
+    def step_3(self):
+        self.j = min(self.j, self.k)
+        # print(self.xb)
+        if self.b < (self.xb +
+                     2 * self.N[self.l - 1][max(self.k - self.j, 0)]):
+            if self.b >= self.xb + self.N[self.l - 1][self.k - self.j]:
+                self.x[self.i] = -self.j
+            elif self.xb <= self.b < self.xb + self.N[self.l - 1][self.k -
+                                                                  self.j]:
+                self.x[self.i] = self.j
+            else:
+                print('okkk', self.xb, self.b, self.j)
+            self.step_4()
+        else:
+            self.xb += 2 * self.N[self.l - 1][self.k - self.j]
+            # print(self.j, self.k, self.l)
+            if self.j < self.k:
+                self.j += 1
+                self.step_3()
+            else:
+                self.step_1()
+            # self.j += 1
+
+
 # Decode a pyramid vq codebook vector index into the codebook vector
 def decode_pvq_vector(b, L, K, N):
     x = np.zeros((L, ), dtype=np.int)
@@ -130,43 +197,52 @@ def decode_pvq_vector(b, L, K, N):
     k = K
     l = L
     i = 0
-    while i < L:
+    while True:
         step_2, step_3, step_4, step_5 = True, True, True, True
         if b == xb:
             # step 1
+            # print('step1')
             x[i] = 0
             step_2, step_3, step_4 = False, False, False
         # step 2
         if step_2:
-            if b < xb + N[l - 1][k]:
+            # print('step2')
+            if b < (xb + N[l - 1][k]):
                 x[i] = 0
                 step_3 = False
             else:
                 xb += N[l - 1][k]
                 j = 1
         # step 3
+        did_break = False
         if step_3:
-            while b >= xb + 2 * N[l - 1][k - j]:
+            # print('step3')
+            while b >= (xb + 2 * N[l - 1][k - j]):
                 xb += 2 * N[l - 1][k - j]
                 if j < k:
                     j += 1
                 else:
-                    print('early break', j, k, b, b)
                     break
-            # if b < xb + 2 * N[l - 1][k - j]:
-            if xb <= b < xb + N[l - 1][k - j]:
-                x[i] = j
-            else:
-                x[i] = -j
+
+            if b < (xb + 2 * N[l - 1][k - j]):
+                if b >= (xb + N[l - 1][k - j]):
+                    x[i] = -j
+                elif xb <= b < (xb + N[l - 1][k - j]):
+                    x[i] = j
+                else:
+                    print("Oh")
         # step 4
         if step_4:
+            # print('step4')
             k -= abs(x[i])
             l -= 1
             i += 1
             if k > 0:
                 step_5 = False
+                print('skipping step5', k, x[i])
         # step 5
         if step_5:
+            # print('step5')
             if k > 0:
                 x[L - 1] = k - abs(x[i])
             break
