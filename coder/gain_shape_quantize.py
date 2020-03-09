@@ -32,8 +32,20 @@ def pvq_search(x: np.array, k: int):
         [type]: [description]
     """
     x_l1 = np.sum(np.abs(x))
-    x_hat = k * x / x_l1
-    return x_hat.astype(np.int), np.round(x_hat).astype(np.int)
+    x_hat = np.abs(k * x / x_l1)
+    # Round down and then do a greedy optimization to fit the remaining pulses
+    pre_search = np.floor(x_hat)
+    print(pre_search)
+    # Count remaining pulses
+    remaining_pulses = k - np.sum(abs(pre_search))
+    while remaining_pulses > 0:
+        print(f'Remaining pulses: {remaining_pulses}')
+        # distribute pulses to the components that got rounded down
+        i = np.argmax(abs(x_hat) - pre_search)
+        pre_search[i] += 1
+        remaining_pulses -= 1
+    pre_search *= np.sign(x)
+    return x_hat, pre_search.astype(np.int)
 
 
 def gain_shape_alloc(R, L, k_fine):
@@ -80,7 +92,7 @@ def encode_pvq_vector(x, K, N):
     l = L
 
     for x_i in x:
-        if abs(x_i) == 0:
+        if x_i == 0:
             b += 0
         if abs(x_i) == 1:
             b += N[l - 1][k] + (0.5 * (1 - np.sign(x_i))) * N[l - 1][k - 1]
@@ -93,6 +105,22 @@ def encode_pvq_vector(x, K, N):
         if k == 0:
             break
     return int(b)
+
+
+def decode_pvq_vector2(b, L, K, N):
+    x = np.zeros((L, ), dtype=np.int)
+    k = K
+    l = L
+    while True:
+        while N[l][k] - N[l][k - 1 - x[L - l]] <= b:
+            x[L - l] += 1
+        b -= (N[l][k] - N[l][k - x[L - l]])
+        k -= x[L - l]
+        l -= 1
+        if l <= 1:
+            x[L - 1] = k
+            break
+    return x
 
 
 # Decode a pyramid vq codebook vector index into the codebook vector
@@ -123,12 +151,13 @@ def decode_pvq_vector(b, L, K, N):
                 if j < k:
                     j += 1
                 else:
+                    print('early break', j, k, b, b)
                     break
-            if b < xb + 2 * N[l - 1][k - j]:
-                if xb <= b < xb + N[l - 1][k - j]:
-                    x[i] = j
-                else:
-                    x[i] = -j
+            # if b < xb + 2 * N[l - 1][k - j]:
+            if xb <= b < xb + N[l - 1][k - j]:
+                x[i] = j
+            else:
+                x[i] = -j
         # step 4
         if step_4:
             k -= abs(x[i])
@@ -156,7 +185,7 @@ def pvq_compute_k_for_R(L: int, max_bits: int):
     while True:
         N = pvq_codebook_size(L, k)
         if N[L][k] > largest_codebook_size:
-            return k - 1
+            return k - 1, N[L][k - 1]
         k += 1
 
 
@@ -178,21 +207,21 @@ def quantize_gain_shape(x, L, num_bits, k_fine=0):
     shape = x / gain
 
     # Mu-law scalar quantize gain
-    y = mu_law_fn(gain)
+    y = mu_law_fn(gain / L)
     print(f"original gain: {gain}")
     gain_quantized = QuantizeUniform(y, bits_gain)
 
     # Find k that satisfies R_shape
-    k = pvq_compute_k_for_R(L, bits_shape)
-
+    k, cb_size = pvq_compute_k_for_R(L, bits_shape)
+    print("k", k, 'used bits', np.log2(cb_size))
     # PVQ the shape
     _, codebook_vector = pvq_search(shape, k)
 
     # Find index of codebook vector
     N = pvq_codebook_size(L, k)
-
+    print(f'Encoded codebook vector: {codebook_vector}')
     shape_quantized = encode_pvq_vector(codebook_vector, k, N)
-
+    print(f'Quantized shape index: {shape_quantized}')
     # Combine gain and shape for the band into a single num_bits number
     return gain_quantized, shape_quantized
 
@@ -207,15 +236,16 @@ def dequantize_gain_shape(gain_quantized,
     print(bits_gain, bits_shape)
     # Reconstruct the gain
     gain_unquantized = DequantizeUniform(gain_quantized, bits_gain)
-    gain = inv_mu_law_fn(gain_unquantized)
+    gain = inv_mu_law_fn(gain_unquantized) * L
     print(f"decoded gain:{gain}")
 
     # Find k that satisfies R_shape
-    k = pvq_compute_k_for_R(L, bits_shape)
-
+    k, _ = pvq_compute_k_for_R(L, bits_shape)
+    print("k", k)
     # Reconstruct the shape
     N = pvq_codebook_size(L, k)
     shape_unquantized = decode_pvq_vector(shape_quantized, L, k, N)
+    print(f'Decoded codebook vector: {shape_unquantized}')
     shape_unquantized = shape_unquantized / np.linalg.norm(
         shape_unquantized.astype(np.float))
 
