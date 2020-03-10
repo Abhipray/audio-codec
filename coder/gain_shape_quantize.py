@@ -35,24 +35,23 @@ def pvq_search(x: np.array, k: int):
     x_hat = np.abs(k * x / x_l1)
     # Round down and then do a greedy optimization to fit the remaining pulses
     pre_search = np.floor(x_hat)
-    print(pre_search)
     # Count remaining pulses
     remaining_pulses = k - np.sum(abs(pre_search))
     while remaining_pulses > 0:
-        print(f'Remaining pulses: {remaining_pulses}')
+        # print(f'Remaining pulses: {remaining_pulses}')
         # distribute pulses to the components that got rounded down
         i = np.argmax(abs(x_hat) - pre_search)
         pre_search[i] += 1
         remaining_pulses -= 1
     pre_search *= np.sign(x)
-    return x_hat, pre_search.astype(np.int)
+    return x_hat * np.sign(x), pre_search.astype(np.int)
 
 
 def gain_shape_alloc(R, L, k_fine):
     """Given a total number of bits, calculate the number of bits for the gain-shape quantization"""
-    R_shape = R / L + 0.5 * np.log2(L) - k_fine
-    R_shape = np.floor(R_shape)
-    R_gain = R - R_shape
+    R_gain = R / L + 0.5 * np.log2(L) - k_fine
+    R_gain = np.floor(R_gain)
+    R_shape = R - R_gain
     return int(R_gain), int(R_shape)
 
 
@@ -105,22 +104,6 @@ def encode_pvq_vector(x, K, N):
         if k == 0:
             break
     return int(b)
-
-
-def decode_pvq_vector2(b, L, K, N):
-    x = np.zeros((L, ), dtype=np.int)
-    k = K
-    l = L
-    while True:
-        while N[l][k] - N[l][k - 1 - x[L - l]] <= b:
-            x[L - l] += 1
-        b -= (N[l][k] - N[l][k - x[L - l]])
-        k -= x[L - l]
-        l -= 1
-        if l <= 1:
-            x[L - 1] = k
-            break
-    return x
 
 
 class decoder:
@@ -176,8 +159,6 @@ class decoder:
             elif self.xb <= self.b < self.xb + self.N[self.l - 1][self.k -
                                                                   self.j]:
                 self.x[self.i] = self.j
-            else:
-                print('okkk', self.xb, self.b, self.j)
             self.step_4()
         else:
             self.xb += 2 * self.N[self.l - 1][self.k - self.j]
@@ -192,6 +173,7 @@ class decoder:
 
 # Decode a pyramid vq codebook vector index into the codebook vector
 def decode_pvq_vector(b, L, K, N):
+    return decoder(b, L, K, N).step_1()
     x = np.zeros((L, ), dtype=np.int)
     xb = 0
     k = K
@@ -273,6 +255,103 @@ def inv_mu_law_fn(y, mu=255):
     return np.sign(y) / mu * ((1 + mu)**np.abs(y) - 1)
 
 
+def bit_allocation_ms(num_bits, theta, length, k_fine=0):
+    a_theta, a_mid_side = gain_shape_alloc(num_bits, length, k_fine)
+    a_mid = np.round(
+        (a_mid_side -
+         (length - 1) * np.log2(np.tan(theta) + np.finfo(float).eps)) /
+        2).astype(np.int)
+    a_side = a_mid_side - a_mid
+    return a_theta, a_mid, a_side
+
+
+def split_band_encode(x, bit_alloc, k_fine=0):
+    # MS coding with split bands
+    # Split the band in half
+    mid = len(x) // 2
+    left = x[:mid]
+    right = x[mid:]
+
+    # Calculate M and S
+    M = (left + right) / 2
+    S = (left - right) / 2
+    M_l2 = np.linalg.norm(M)
+    S_l2 = np.linalg.norm(S)
+    m = M / M_l2
+    s = S / S_l2
+    # theta captures distribution of energy between bands
+    theta = np.arctan(S_l2 / M_l2)
+    print('theta ', theta)
+    # Find bit allocations for m, s and theta
+    a_theta, a_mid, a_side = bit_allocation_ms(bit_alloc, theta, mid, k_fine)
+    print('bitalloc theta, mid, side', a_theta, a_mid, a_side)
+
+    # scalar quantize theta
+    print(f'encode theta: {theta}')
+    theta_normalized = theta / (np.pi / 2)
+    theta_idx = QuantizeUniform(theta_normalized, a_theta)
+
+    # PVQ m and s
+    mid_idx, _ = quantize_pvq(m, a_mid)
+    side_idx, _ = quantize_pvq(s, a_side)
+
+    return mid_idx, side_idx, theta_idx
+
+
+def split_band_decode(mid_idx,
+                      side_idx,
+                      theta_idx,
+                      num_bits,
+                      band_size,
+                      k_fine=0):
+    half_band = band_size // 2
+    a_theta, _, _ = bit_allocation_ms(num_bits, 0, half_band, 0)
+    theta_hat = DequantizeUniform(theta_idx, a_theta) * (np.pi / 2)
+    print(f'decoded theta: {theta_hat}')
+    # Decode pvq indices
+    # Find bit allocations for m and s
+    a_theta, a_mid, a_side = bit_allocation_ms(num_bits, theta_hat, half_band,
+                                               k_fine)
+    print('bitalloc theta, mid, side', a_theta, a_mid, a_side)
+    mid_hat = dequantize_pvq(mid_idx, half_band, a_mid)
+    side_hat = dequantize_pvq(side_idx, half_band, a_side)
+
+    left = mid_hat * np.cos(theta_hat) + side_hat * np.sin(theta_hat)
+    right = mid_hat * np.cos(theta_hat) - side_hat * np.sin(theta_hat)
+    left /= np.sqrt(2)
+    right /= np.sqrt(2)
+    x = np.concatenate([left, right])
+    return x
+
+
+def quantize_pvq(x, num_bits):
+    """Vector quantize a unit-vector x with num_bits"""
+    x_norm = np.linalg.norm(x)
+    assert np.allclose(x_norm, 1.0), f"x is not a unit-vector, norm={x_norm}"
+    L = len(x)
+    k, cb_size = pvq_compute_k_for_R(L, num_bits)
+    actual_bits_used = np.log2(cb_size + np.finfo(float).eps)
+
+    N = pvq_codebook_size(L, k)
+
+    # PVQ the shape
+    _, codebook_vector = pvq_search(x, k)
+    codebook_idx = encode_pvq_vector(codebook_vector, k, N)
+    return codebook_idx, actual_bits_used
+
+
+def dequantize_pvq(cb_idx, L, num_bits):
+    """Find the codebook vector corresponding to cb_idx"""
+    k, cb_size = pvq_compute_k_for_R(L, num_bits)
+    N = pvq_codebook_size(L, k)
+    x = decode_pvq_vector(cb_idx, L, k, N)
+    x = x.astype(np.float)
+    x_l2 = np.linalg.norm(x)
+    if x_l2 != 0:
+        x = x / np.linalg.norm(x)
+    return x
+
+
 def quantize_gain_shape(x, L, num_bits, k_fine=0):
 
     # Allocate bits for gain and shape
@@ -283,9 +362,9 @@ def quantize_gain_shape(x, L, num_bits, k_fine=0):
     shape = x / gain
 
     # Mu-law scalar quantize gain
-    y = mu_law_fn(gain / L)
     print(f"original gain: {gain}")
-    gain_quantized = QuantizeUniform(y, bits_gain)
+    gain = mu_law_fn(gain / L)
+    gain_quantized = QuantizeUniform(gain, bits_gain)
 
     # Find k that satisfies R_shape
     k, cb_size = pvq_compute_k_for_R(L, bits_shape)
