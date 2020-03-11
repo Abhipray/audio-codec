@@ -72,7 +72,7 @@ def pvq_codebook_size(L, K, N=None):
     if N is None:
         N = np.ones((L + 1, K + 1), dtype=np.int) * -1
     if L >= 0 and K == 0:
-        N[L][K] = 1
+        N[:L + 1, K] = 1
         return N
     if K >= 1 and L == 0:
         N[L][K] = 0
@@ -84,6 +84,7 @@ def pvq_codebook_size(L, K, N=None):
     if N[L][K - 1] == -1:
         pvq_codebook_size(L, K - 1, N)
     N[L][K] = N[L - 1][K] + N[L - 1][K - 1] + N[L][K - 1]
+
     return N
 
 

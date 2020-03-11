@@ -19,11 +19,11 @@ from bitalloc import *  #allocates bits to scale factor bands given SMRs
 from gain_shape_quantize import quantize_gain_shape, dequantize_gain_shape
 
 
-def Decode(pb, bitAlloc, codingParams):
+def Decode(pb, bitAlloc, overallScaleFactor, codingParams):
     """Reconstitutes a single-channel block of encoded data into a block of
     signed-fraction data based on the parameters in a PACFile object"""
 
-    # rescaleLevel = 1. * (1 << overallScaleFactor)
+    rescaleLevel = 1. * (1 << overallScaleFactor)
     halfN = codingParams.nMDCTLines
     N = 2 * halfN
     # vectorizing the Dequantize function call
@@ -42,7 +42,7 @@ def Decode(pb, bitAlloc, codingParams):
             #     scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
             #     codingParams.nScaleBits, bitAlloc[iBand])
         iMant += nLines
-    # mdctLine /= rescaleLevel  # put overall gain back to original level
+    mdctLine /= rescaleLevel  # put overall gain back to original level
 
     # IMDCT and window the data for this channel
     data = SineWindow(IMDCT(mdctLine, halfN,
@@ -58,15 +58,16 @@ def Encode(data, codingParams):
     bitAlloc = []
     indices = []
     idx_bits = []
-
+    overall_scale = []
     # loop over channels and separately encode each one
     for iCh in range(codingParams.nChannels):
-        (b, m, o) = EncodeSingleChannel(data[iCh], codingParams)
+        (b, m, o, s) = EncodeSingleChannel(data[iCh], codingParams)
         bitAlloc.append(b)
         indices.append(m)
         idx_bits.append(o)
+        overall_scale.append(s)
     # return results bundled over channels
-    return (bitAlloc, indices, idx_bits)
+    return (bitAlloc, indices, idx_bits, overall_scale)
 
 
 def EncodeSingleChannel(data, codingParams):
@@ -146,4 +147,4 @@ def EncodeSingleChannel(data, codingParams):
     # end of loop over scale factor bands
 
     # return results
-    return (bitAlloc, all_indices, all_idx_bits)
+    return (bitAlloc, all_indices, all_idx_bits, overallScale)

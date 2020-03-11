@@ -187,8 +187,8 @@ class PACFile(AudioFile):
                 raise "Only read a partial block of coded PACFile data"
 
             # extract the data from the PackedBits object
-            # overallScaleFactor = pb.ReadBits(
-            #     codingParams.nScaleBits)  # overall scale factor
+            overallScaleFactor = pb.ReadBits(
+                codingParams.nScaleBits)  # overall scale factor
             scaleFactor = []
             bitAlloc = []
             indices = []
@@ -216,7 +216,8 @@ class PACFile(AudioFile):
             # < now can unpack any custom data passed in the nBytes of data >
 
             # (DECODE HERE) decode the unpacked data for this channel, overlap-and-add first half, and append it to the data array (saving other half for next overlap-and-add)
-            decodedData = codec.Decode(pb, bitAlloc, codingParams)
+            decodedData = codec.Decode(pb, bitAlloc, overallScaleFactor,
+                                       codingParams)
             data[iCh] = np.concatenate(
                 (data[iCh],
                  np.add(codingParams.overlapAndAdd[iCh],
@@ -278,7 +279,7 @@ class PACFile(AudioFile):
         codingParams.priorBlock = data  # current pass's data is next pass's prior block data
 
         # (ENCODE HERE) Encode the full block of multi=channel data
-        (bitAlloc, indices, idx_bits) = self.Encode(
+        (bitAlloc, indices, idx_bits, overallScaleFactor) = self.Encode(
             fullBlockData, codingParams
         )  # returns a tuple with all the block-specific info not in the file header
 
@@ -312,8 +313,8 @@ class PACFile(AudioFile):
             pb.Size(nBytes)
 
             # now pack the nBytes of data into the PackedBits object
-            # pb.WriteBits(overallScaleFactor[iCh],
-            #              codingParams.nScaleBits)  # overall scale factor
+            pb.WriteBits(overallScaleFactor[iCh],
+                         codingParams.nScaleBits)  # overall scale factor
 
             for iBand in range(
                     codingParams.sfBands.nBands
@@ -393,7 +394,7 @@ if __name__ == "__main__":
 
     for data_rate in bitrates:
         for in_file in input_dir.glob('*.wav'):
-            for Direction in ("Decode"):  #("Encode", "Decode"):
+            for Direction in ("Encode", "Decode"):
                 #    for Direction in ("Decode"):
                 print(f'Processing {in_file} at {data_rate}kbps')
                 # create the audio file objects
