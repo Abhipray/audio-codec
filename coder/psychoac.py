@@ -59,7 +59,7 @@ class Masker:
         if isTonal:
             self.drop = 16
         else:
-            self.drop = 3
+            self.drop = 6
 
     def IntensityAtFreq(self, freq):
         """The intensity at frequency freq"""
