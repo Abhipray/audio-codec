@@ -16,6 +16,7 @@ from quantize import *  # using vectorized versions (to use normal versions, unc
 # used only by Encode
 from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
 from bitalloc import *  #allocates bits to scale factor bands given SMRs
+from gain_shape_quantize import quantize_gain_shape, dequantize_gain_shape
 
 
 def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams):
@@ -26,7 +27,7 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams):
     halfN = codingParams.nMDCTLines
     N = 2 * halfN
     # vectorizing the Dequantize function call
-    vDequantize = np.vectorize(Dequantize)
+    # vDequantize = np.vectorize(Dequantize)
 
     # reconstitute the first halfN MDCT lines of this channel from the stored data
     mdctLine = np.zeros(halfN, dtype=np.float64)
@@ -80,7 +81,7 @@ def EncodeSingleChannel(data, codingParams):
         maxMantBits = 16  # to make sure we don't ever overflow mantissa holders
     sfBands = codingParams.sfBands
     # vectorizing the Mantissa function call
-    vMantissa = np.vectorize(Mantissa)
+    # vMantissa = np.vectorize(Mantissa)
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
     bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
@@ -131,10 +132,17 @@ def EncodeSingleChannel(data, codingParams):
         highLine = sfBands.upperLine[
             iBand] + 1  # extra value is because slices don't include last value
         nLines = sfBands.nLines[iBand]
+
         scaleLine = np.max(np.abs(mdctLines[lowLine:highLine]))
         scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
                                          bitAlloc[iBand])
         if bitAlloc[iBand]:
+            x = mdctLines[lowLine:
+                          highLine]  # Input vector for vector quantization
+            # perform the vector quantization
+            k_fine = 0
+            print('bit alloc: ', bitAlloc[iBand], len(x))
+            quantize_gain_shape(x, bitAlloc[iBand], k_fine)
             mantissa[iMant:iMant + nLines] = vMantissa(
                 mdctLines[lowLine:highLine], scaleFactor[iBand], nScaleBits,
                 bitAlloc[iBand])
