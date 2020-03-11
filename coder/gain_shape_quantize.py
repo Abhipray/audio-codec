@@ -298,9 +298,17 @@ def bit_allocation_ms(num_bits, theta, length, k_fine=0):
 def split_band_encode(x, bit_alloc, k_fine=0):
     # MS coding with split bands
     # Split the band in half
-    mid = len(x) // 2
-    left = x[:mid]
+    band_size = len(x)
+    mid = band_size // 2
+
+    half_band = int(np.ceil(band_size / 2))
+    if half_band > band_size // 2:
+        # Band has odd number of elements, pad the left half
+        left = np.concatenate([x[:mid], [0]])
+    else:
+        left = x[:mid]
     right = x[mid:]
+    mid = half_band
 
     # Calculate M and S
     M = (left + right) / 2
@@ -341,7 +349,10 @@ def split_band_decode(mid_idx,
                       num_bits,
                       band_size,
                       k_fine=0):
-    half_band = band_size // 2
+    # Split the band in half
+
+    half_band = int(np.ceil(band_size / 2))
+
     a_theta, _, _ = bit_allocation_ms(num_bits, 0, half_band, k_fine)
     print('bitalloc theta,', a_theta)
     theta_hat = DequantizeUniform(theta_idx, a_theta) * (np.pi / 2)
@@ -363,8 +374,11 @@ def split_band_decode(mid_idx,
     print('right', right)
     left /= np.sqrt(2)
     right /= np.sqrt(2)
-    # left /= np.linalg.norm(left)
-    # right /= np.linalg.norm(right)
+
+    if half_band > band_size // 2:
+        # Band has odd number of elements, drop the last element in left
+        left = left[:len(left) - 1]
+
     x = np.concatenate([left, right])
     return x, mid_bits, side_bits, a_theta
 
