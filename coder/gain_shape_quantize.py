@@ -231,6 +231,34 @@ def decode_pvq_vector(b, L, K, N):
     return x
 
 
+def quantize_pvq(x, num_bits):
+    """Vector quantize a unit-vector x with num_bits"""
+    x_norm = np.linalg.norm(x)
+    assert np.allclose(x_norm, 1.0), f"x is not a unit-vector, norm={x_norm}"
+    L = len(x)
+    k, cb_size = pvq_compute_k_for_R(L, num_bits)
+    actual_bits_used = np.log2(cb_size + np.finfo(float).eps)
+
+    N = pvq_codebook_size(L, k)
+
+    # PVQ the shape
+    _, codebook_vector = pvq_search(x, k)
+    codebook_idx = encode_pvq_vector(codebook_vector, k, N)
+    return codebook_idx, actual_bits_used
+
+
+def dequantize_pvq(cb_idx, L, num_bits):
+    """Find the codebook vector corresponding to cb_idx"""
+    k, cb_size = pvq_compute_k_for_R(L, num_bits)
+    N = pvq_codebook_size(L, k)
+    x = decode_pvq_vector(cb_idx, L, k, N)
+    x = x.astype(np.float)
+    x_l2 = np.linalg.norm(x)
+    if x_l2 != 0:
+        x = x / np.linalg.norm(x)
+    return x
+
+
 def pvq_compute_k_for_R(L: int, max_bits: int):
     """Given a number of bits, find the largest K (number of pulses) that satisfies log2(N(L, K)) <= max_bits
     
@@ -257,10 +285,11 @@ def inv_mu_law_fn(y, mu=255):
 
 def bit_allocation_ms(num_bits, theta, length, k_fine=0):
     a_theta, a_mid_side = gain_shape_alloc(num_bits, length, k_fine)
-    a_mid = np.round(
+    a_mid = np.floor(
         (a_mid_side -
          (length - 1) * np.log2(np.tan(theta) + np.finfo(float).eps)) /
         2).astype(np.int)
+    a_mid = max(a_mid, 0)
     a_side = a_mid_side - a_mid
     return a_theta, a_mid, a_side
 
@@ -305,7 +334,8 @@ def split_band_decode(mid_idx,
                       band_size,
                       k_fine=0):
     half_band = band_size // 2
-    a_theta, _, _ = bit_allocation_ms(num_bits, 0, half_band, 0)
+    a_theta, _, _ = bit_allocation_ms(num_bits, 0, half_band, k_fine)
+    print('bitalloc theta,', a_theta)
     theta_hat = DequantizeUniform(theta_idx, a_theta) * (np.pi / 2)
     print(f'decoded theta: {theta_hat}')
     # Decode pvq indices
@@ -324,39 +354,11 @@ def split_band_decode(mid_idx,
     return x
 
 
-def quantize_pvq(x, num_bits):
-    """Vector quantize a unit-vector x with num_bits"""
-    x_norm = np.linalg.norm(x)
-    assert np.allclose(x_norm, 1.0), f"x is not a unit-vector, norm={x_norm}"
-    L = len(x)
-    k, cb_size = pvq_compute_k_for_R(L, num_bits)
-    actual_bits_used = np.log2(cb_size + np.finfo(float).eps)
-
-    N = pvq_codebook_size(L, k)
-
-    # PVQ the shape
-    _, codebook_vector = pvq_search(x, k)
-    codebook_idx = encode_pvq_vector(codebook_vector, k, N)
-    return codebook_idx, actual_bits_used
-
-
-def dequantize_pvq(cb_idx, L, num_bits):
-    """Find the codebook vector corresponding to cb_idx"""
-    k, cb_size = pvq_compute_k_for_R(L, num_bits)
-    N = pvq_codebook_size(L, k)
-    x = decode_pvq_vector(cb_idx, L, k, N)
-    x = x.astype(np.float)
-    x_l2 = np.linalg.norm(x)
-    if x_l2 != 0:
-        x = x / np.linalg.norm(x)
-    return x
-
-
 def quantize_gain_shape(x, L, num_bits, k_fine=0):
-
     # Allocate bits for gain and shape
     bits_gain, bits_shape = gain_shape_alloc(num_bits, L, k_fine)
     print(f'bits_gain: {bits_gain} bits_shape {bits_shape}')
+
     # Separate gain and shape
     gain = np.linalg.norm(x)
     shape = x / gain
@@ -364,44 +366,31 @@ def quantize_gain_shape(x, L, num_bits, k_fine=0):
     # Mu-law scalar quantize gain
     print(f"original gain: {gain}")
     gain = mu_law_fn(gain / L)
-    gain_quantized = QuantizeUniform(gain, bits_gain)
+    gain_idx = QuantizeUniform(gain, bits_gain)
 
-    # Find k that satisfies R_shape
-    k, cb_size = pvq_compute_k_for_R(L, bits_shape)
-    print("k", k, 'used bits', np.log2(cb_size))
-    # PVQ the shape
-    _, codebook_vector = pvq_search(shape, k)
+    # Encode the shape of the band using split_encode
+    mid_idx, side_idx, theta_idx = split_band_encode(x, bits_shape, k_fine)
 
-    # Find index of codebook vector
-    N = pvq_codebook_size(L, k)
-    print(f'Encoded codebook vector: {codebook_vector}')
-    shape_quantized = encode_pvq_vector(codebook_vector, k, N)
-    print(f'Quantized shape index: {shape_quantized}')
-    # Combine gain and shape for the band into a single num_bits number
-    return gain_quantized, shape_quantized
+    return gain_idx, mid_idx, side_idx, theta_idx
 
 
-def dequantize_gain_shape(gain_quantized,
-                          shape_quantized,
-                          num_bits,
+def dequantize_gain_shape(gain_idx,
+                          mid_idx,
+                          side_idx,
+                          theta_idx,
+                          bit_alloc,
                           L,
                           k_fine=0):
 
-    bits_gain, bits_shape = gain_shape_alloc(num_bits, L, k_fine)
-    print(bits_gain, bits_shape)
+    bits_gain, bits_shape = gain_shape_alloc(bit_alloc, L, k_fine)
+    print(f'bits_gain: {bits_gain} bits_shape {bits_shape}')
     # Reconstruct the gain
-    gain_unquantized = DequantizeUniform(gain_quantized, bits_gain)
+    gain_unquantized = DequantizeUniform(gain_idx, bits_gain)
     gain = inv_mu_law_fn(gain_unquantized) * L
     print(f"decoded gain:{gain}")
 
     # Find k that satisfies R_shape
-    k, _ = pvq_compute_k_for_R(L, bits_shape)
-    print("k", k)
-    # Reconstruct the shape
-    N = pvq_codebook_size(L, k)
-    shape_unquantized = decode_pvq_vector(shape_quantized, L, k, N)
-    print(f'Decoded codebook vector: {shape_unquantized}')
-    shape_unquantized = shape_unquantized / np.linalg.norm(
-        shape_unquantized.astype(np.float))
+    shape = split_band_decode(mid_idx, side_idx, theta_idx, bits_shape, L,
+                              k_fine)
 
-    return gain * shape_unquantized
+    return gain * shape
