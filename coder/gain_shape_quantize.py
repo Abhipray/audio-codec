@@ -23,6 +23,8 @@ from gain_shape_encoding import GainShapeEncoding
 
 log = logging.getLogger(__name__)
 
+SPLIT_BITS = 20
+
 
 def pvq_search(x: np.array, k: int):
     """Given a unit vector x of N dimension, returns closest PVQ S(N, k) codebook vector.
@@ -300,7 +302,7 @@ def bit_allocation_ms(num_bits, theta, length, k_fine=0):
 
 
 def split_band_encode(x, bit_alloc, k_fine=0):
-    if bit_alloc > 20:
+    if bit_alloc > SPLIT_BITS:
         # MS coding with split bands
         # Split the band in half
         band_size = len(x)
@@ -355,7 +357,7 @@ def split_band_encode(x, bit_alloc, k_fine=0):
 
 
 def split_band_decode(pb, num_bits, band_size, k_fine=0):
-    if num_bits > 20:
+    if num_bits > SPLIT_BITS:
         half_band = int(np.ceil(band_size / 2))
         a_theta, _, _ = bit_allocation_ms(num_bits, 0, half_band, k_fine)
         log.debug(f'bitalloc theta: {a_theta}')
@@ -406,10 +408,13 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
         return x, used_bits
 
 
-def quantize_gain_shape(x, num_bits, k_fine=0):
+def quantize_gain_shape(x, bit_alloc, k_fine=0):
     # Allocate bits for gain and shape
     L = len(x)
-    bits_gain, bits_shape = gain_shape_alloc(num_bits, L, k_fine)
+    bits_gain, bits_shape = gain_shape_alloc(bit_alloc, L, k_fine)
+    if bit_alloc > 32 and bits_gain < 16:
+        bits_gain = 16
+        bits_shape = bit_alloc - bits_gain
     log.debug(f'Original bits_gain: {bits_gain} bits_shape {bits_shape}')
 
     # Separate gain and shape
@@ -436,6 +441,10 @@ def dequantize_gain_shape(pb, bit_alloc, L, k_fine=0):
 
     bits_gain, bits_shape = gain_shape_alloc(bit_alloc, L, k_fine)
     log.debug(f'bits_gain: {bits_gain} bits_shape {bits_shape}')
+
+    if bit_alloc > 32 and bits_gain < 16:
+        bits_gain = 16
+        bits_shape = bit_alloc - bits_gain
 
     # Find k that satisfies R_shape
     shape, bits_used = split_band_decode(pb, bits_shape, L, k_fine)

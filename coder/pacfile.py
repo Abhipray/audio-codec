@@ -108,6 +108,9 @@ from psychoac import ScaleFactorBands, AssignMDCTLinesFromFreqLimits  # defines 
 from pathlib import Path
 import os
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 import numpy as np  # to allow conversion of data blocks to numpy's array object
 MAX16BITS = 32767
 

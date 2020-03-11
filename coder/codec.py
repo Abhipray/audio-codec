@@ -18,6 +18,8 @@ from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
 from bitalloc import *  #allocates bits to scale factor bands given SMRs
 from gain_shape_quantize import quantize_gain_shape, dequantize_gain_shape
 
+K_FINE = 0
+
 
 def Decode(pb, bitAlloc, overallScaleFactor, codingParams):
     """Reconstitutes a single-channel block of encoded data into a block of
@@ -37,10 +39,7 @@ def Decode(pb, bitAlloc, overallScaleFactor, codingParams):
         if bitAlloc[iBand]:
             # Reconstruct MDCT lines from VQ
             mdctLine[iMant:(iMant + nLines)] = dequantize_gain_shape(
-                pb, bitAlloc[iBand], nLines)
-            # vDequantize(
-            #     scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
-            #     codingParams.nScaleBits, bitAlloc[iBand])
+                pb, int(bitAlloc[iBand] * nLines), nLines, k_fine=K_FINE)
         iMant += nLines
     mdctLine /= rescaleLevel  # put overall gain back to original level
 
@@ -109,7 +108,7 @@ def EncodeSingleChannel(data, codingParams):
     SMRs = CalcSMRs(timeSamples, mdctLines, overallScale,
                     codingParams.sampleRate, sfBands)
 
-    mdctLines /= (1 << overallScale)  #Renormalize back to usual
+    # mdctLines /= (1 << overallScale)  #Renormalize back to usual
 
     # perform bit allocation using SMR results
     bitAlloc = BitAlloc(bitBudget, maxMantBits, sfBands.nBands, sfBands.nLines,
@@ -137,10 +136,9 @@ def EncodeSingleChannel(data, codingParams):
             x = mdctLines[lowLine:
                           highLine]  # Input vector for vector quantization
             # perform the vector quantization
-            k_fine = 0
             # print('bit alloc: ', bitAlloc[iBand], len(x))
             band_budget = int(bitAlloc[iBand] * nLines)
-            indices, bits = quantize_gain_shape(x, band_budget, k_fine)
+            indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
             all_indices.append(indices)
             all_idx_bits.append(bits)
 
