@@ -1,0 +1,14 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 12 14:49:41 2020
+# Reference file: /Users/arda/Documents/PhD/Classes/WI19/MUS422/proj/audio-codec/ListeningTests/Quartet/quar48_1.wav
+# Subject name/number: arda
+Test file               ,    Session 1,      Average
+quar48_1_full+SBR_96.wav,        -1.00,        -1.00
+quar48_1_vq_128.wav     ,        -0.30,        -0.30
+quar48_1_full_128.wav   ,        -0.40,        -0.40
+quar48_1_bs_128.wav     ,         0.10,         0.10
+quar48_1_vq_96.wav      ,        -1.00,        -1.00
+quar48_1_full_96.wav    ,        -0.90,        -0.90
+quar48_1_base_128.wav   ,         0.00,         0.00
+quar48_1_bs_96.wav      ,        -0.90,        -0.90
+quar48_1_base_96.wav    ,        -0.30,        -0.30
