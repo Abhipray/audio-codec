@@ -554,7 +554,7 @@ class PACFile(AudioFile):
         and the overall scale factor for each channel.
         """
         #Passes encoding logic to the Encode function defined in the codec module
-        if codingParams.useSBR and not codingParams.useVQ and not curTrans:
+        if codingParams.useSBR and not curTrans:
             return codec.Encode_SBR(data, codingParams, lastTrans, curTrans, nextTrans)
         
         return codec.Encode(data, codingParams, lastTrans, curTrans, nextTrans)
@@ -579,7 +579,7 @@ class PACFile(AudioFile):
 #-----------------------------------------------------------------------------
 
 input_dir = Path('../test_signals')
-output_dir = Path('../test_vq_sbr_int')
+output_dir = Path('../test_decoded_sbr_at_96FINAL')
 bitrates = [96]
 os.makedirs(output_dir, exist_ok=True)
 

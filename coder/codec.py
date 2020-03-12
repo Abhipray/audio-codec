@@ -116,8 +116,22 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingPa
     # we can smooth this step function of the envelope with a Gaussian kernel to generate a nicer step function
     # the sigma function here controls the smoothing--probably needs some tuning
     omit_cutoff = codingParams.sfBands.lowerLine[codingParams.omittedBands[0]]
+    num_omitted = len(mdctLine)-omit_cutoff
     envelope = mdctLine[omit_cutoff:]
-    smoothed_envelope =  gaussian_filter1d(envelope, sigma=100)
+    envelope = np.append(envelope, np.zeros_like(envelope))
+    
+    
+    #plt.figure(figsize=(12, 8))
+    #plt.title('Envelope')
+    #plt.semilogx(np.arange(2*num_omitted), envelope)
+    #plt.show()
+
+    smoothed_envelope =  gaussian_filter1d(envelope, sigma=200)
+    
+    #plt.figure(figsize=(12, 8))
+    #plt.title('Smoothed Envelope')
+    #plt.semilogx(np.arange(2*num_omitted), smoothed_envelope)
+    #plt.show()
 
     #plt.figure(figsize=(12, 8))
     #plt.title('MDCT Lines before transposition')
@@ -126,7 +140,6 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingPa
     #plt.show()
 
     # now, replicate and then multiply by the smoothed envelope
-    num_omitted = len(mdctLine)-omit_cutoff
     factor = len(mdctLine)/num_omitted
     factor = floor(factor)
     up_factor = factor
@@ -147,11 +160,6 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingPa
     filers = interp_fn(new_freqs)
     
     mdctLine[omit_cutoff:] = filers
-
-    #plt.figure(figsize=(12, 8))
-    #plt.title('Envelope')
-    #plt.semilogx(np.arange(num_omitted), smoothed_envelope)
-    #plt.show()
 
     #plt.figure(figsize=(12, 8))
     #plt.title('MDCT Lines without envelope adjustment')
@@ -176,7 +184,7 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingPa
     # add some noise to these high frequency components to sound a bit more natural
     # need to tune scale, which is the standard deviation of each sample
     # right now, the standard deviation of the noise depends on the amplitude of the frequency line (should make sense, right?)
-    mdctLine[omit_cutoff:] += np.random.normal(loc=np.zeros(num_omitted), scale=abs(mdctLine[omit_cutoff:])/10, size=num_omitted)
+    # mdctLine[omit_cutoff:] += np.random.normal(loc=np.zeros(num_omitted), scale=abs(mdctLine[omit_cutoff:])/10, size=num_omitted)
     
     
     #plt.figure(figsize=(12, 8))
@@ -458,8 +466,8 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
                 # perform the vector quantization
                 band_budget = int(bitAlloc[iBand] * nLines)
                 indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
-                print(indices)
-                print(bits)
+#                print(indices)
+#                print(bits)
                 if sum(bits) == 0:
                     bitAlloc[iBand] = 0
                 else:
