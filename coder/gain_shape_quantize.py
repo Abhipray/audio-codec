@@ -394,7 +394,8 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
         total_used_bits = a_theta
         left, right = None, None
         if a_mid > SPLIT_BITS:
-            left, used_bits = split_band_decode(pb, a_mid, half_band, k_fine)
+            mid_hat, used_bits = split_band_decode(pb, a_mid, half_band,
+                                                   k_fine)
             total_used_bits += used_bits
         else:
             # decode left here
@@ -407,7 +408,8 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
             mid_bits = int(np.ceil(mid_bits))
             total_used_bits += mid_bits
         if a_side > SPLIT_BITS:
-            right, used_bits = split_band_decode(pb, a_side, half_band, k_fine)
+            side_hat, used_bits = split_band_decode(pb, a_side, half_band,
+                                                    k_fine)
             total_used_bits += used_bits
         else:
             # decode right here
@@ -420,10 +422,8 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
             side_bits = int(np.ceil(side_bits))
             total_used_bits += side_bits
 
-        if left is None:
-            left = mid_hat * np.cos(theta_hat) + side_hat * np.sin(theta_hat)
-        if right is None:
-            right = mid_hat * np.cos(theta_hat) - side_hat * np.sin(theta_hat)
+        left = mid_hat * np.cos(theta_hat) + side_hat * np.sin(theta_hat)
+        right = mid_hat * np.cos(theta_hat) - side_hat * np.sin(theta_hat)
 
         left /= np.sqrt(2)
         right /= np.sqrt(2)
