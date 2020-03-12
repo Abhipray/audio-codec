@@ -445,7 +445,7 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
     else:
         k, actual_bits_used, N = pvq_compute_k_for_R(band_size, num_bits)
         idx = pb.ReadBits(actual_bits_used)
-        log.debug(idx, band_size, num_bits)
+
         x = dequantize_pvq(idx, band_size, k, N)
         x_l2 = np.linalg.norm(x)
         if x_l2 != 0:
