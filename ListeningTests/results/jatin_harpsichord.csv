@@ -2,12 +2,13 @@
 # Administered on Thu Mar 12 14:21:30 2020
 # Reference file: /Users/Jan/Downloads/audio-codec-master/ListeningTests/Harpsichord/harpsichord.wav
 # Subject name/number: jatin
-Test file               ,    Session 1,      Average
-harpsichord_bs_96.wav   ,        -3.00,        -3.00
-harpsichord_vq_96.wav   ,        -2.50,        -2.50
-harpsichord_full_128.wav,        -2.00,        -2.00
-harpsichord_full_96.wav ,        -3.00,        -3.00
-harpsichord_base_128.wav,        -1.50,        -1.50
-harpsichord_bs_128.wav  ,        -1.50,        -1.50
-harpsichord_vq_128.wav  ,        -1.00,        -1.00
-harpsichord_base_96.wav ,        -2.00,        -2.00
+Test file                  ,  Session 1,      Average
+harpsichord_bs_96.wav      ,      -3.00,        -3.00
+harpsichord_vq_96.wav      ,      -2.50,        -2.50
+harpsichord_full_128.wav   ,      -2.00,        -2.00
+harpsichord_full_96.wav    ,      -3.00,        -3.00
+harpsichord_base_128.wav   ,      -1.50,        -1.50
+harpsichord_full+SBR_96.wav,      -3.00,        -3.00
+harpsichord_bs_128.wav     ,      -1.50,        -1.50
+harpsichord_vq_128.wav     ,      -1.00,        -1.00
+harpsichord_base_96.wav    ,      -2.00,        -2.00
