@@ -19,6 +19,8 @@ def QuantizeUniform(aNum, nBits):
     #The overload level of the quantizer should be 1.0
 
     ### YOUR CODE STARTS HERE ###
+    if nBits <= 0:
+        return 0
     sign = np.sign(aNum)
     if sign >= 0:
         s = 0
@@ -41,6 +43,8 @@ def DequantizeUniform(aQuantizedNum, nBits):
     """
 
     ### YOUR CODE STARTS HERE ###
+    if nBits <=0:
+        return 0
     s = aQuantizedNum & (1 << (nBits - 1))
     code = aQuantizedNum & (2**(nBits - 1) - 1)
     if s == 0:

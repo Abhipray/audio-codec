@@ -593,8 +593,8 @@ if __name__ == "__main__":
 
     for data_rate in bitrates:
         for in_file in input_dir.glob('*.wav'):
-            for Direction in ("Encode", "Decode"):
-            # for Direction in ("Decode"):
+            # for Direction in ("Encode", "Decode"):
+            for Direction in ["Decode"]:
                 print(f'Processing {in_file} at {data_rate}kbps')
                 # create the audio file objects
                 if Direction == "Encode":
@@ -668,6 +668,7 @@ if __name__ == "__main__":
                 # close the files
                 inFile.Close(codingParams)
                 outFile.Close(codingParams)
+                break
             # end of loop over Encode/Decode
 
             elapsed = time.time() - elapsed

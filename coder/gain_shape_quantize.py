@@ -482,7 +482,7 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
             log.debug(shape)
             indices, bits = split_band_encode(shape, bits_shape, k_fine)
             total_used_bits = sum(bits)
-            assert total_used_bits <= bits_shape, "Used more bits than allocated in quantize"
+            # assert total_used_bits <= bits_shape, "Used more bits than allocated in quantize"
             # Mu-law scalar quantize gain
             bits_gain += bits_shape - total_used_bits
             log.debug(
@@ -493,6 +493,8 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
             bits = []
         gain = mu_law_fn(gain / L)
         log.debug(f"original gain: {gain}")
+        if bits_gain < 0:
+            bits_gain = 0
         gain_idx = QuantizeUniform(gain, bits_gain)
 
         indices = indices + [gain_idx]
@@ -513,7 +515,7 @@ def dequantize_gain_shape(pb, bit_alloc, L, k_fine=0):
     if bits_shape != 0:
         # Find k that satisfies R_shape
         shape, bits_used = split_band_decode(pb, bits_shape, L, k_fine)
-        assert bits_used <= bits_shape, "Used more bits than allocated in dequantize"
+        # assert bits_used <= bits_shape, "Used more bits than allocated in dequantize"
         # Reconstruct the gain
         # Mu-law scalar dequantize gain
         bits_gain += (bits_shape - bits_used)
