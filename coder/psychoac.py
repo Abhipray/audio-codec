@@ -139,8 +139,15 @@ class ScaleFactorBands:
         of lines in each band
         """
         self.nLines = np.array(nLines, dtype=np.int)
-        arg_zeros = np.argwhere(self.nLines == 0)
-        self.nLines = np.delete(self.nLines, arg_zeros)
+
+        i = 1
+        while i < len(self.nLines):
+            if self.nLines[i-1] <= 12:
+                self.nLines[i] += self.nLines[i-1]
+                self.nLines = np.delete(self.nLines, i-1)
+            else:
+                i += 1
+
 
         self.nBands = len(self.nLines)
 

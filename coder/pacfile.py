@@ -502,8 +502,8 @@ class PACFile(AudioFile):
 #-----------------------------------------------------------------------------
 
 input_dir = Path('../test_signals')
-output_dir = Path('../test_decoded96')
-bitrates = [96]
+output_dir = Path('../test_decoded')
+bitrates = [128]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)

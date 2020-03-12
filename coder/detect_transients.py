@@ -2,16 +2,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
-def parTransientDetect(block, thresh=16, axis=1):
+def parTransientDetect(block, thresh=4.5, axis=1):
     """
     Use simple peak-to-avg ratio method to detect transients
     """
     mymax = np.max(np.abs(block), axis=axis)
-    argmax = np.argmax(np.abs(block), axis=axis)
-    idxs = np.arange(max(argmax))
-    if len(idxs) == 0:
-        return False
-    avg = np.mean(np.abs(np.take(block, idxs, axis=axis)))
+    argmax = np.argmax(np.abs(block), axis=axis) + 500
+    idxs = np.arange(min(max(argmax), np.shape(block)[axis]))
+    if len(idxs) != 0:
+        avg = np.mean(np.abs(np.take(block, idxs, axis=axis)))
+    else:
+        avg = np.mean(np.abs(block))
 
     if np.any(avg == 0):
         return 0
@@ -22,7 +23,7 @@ def parTransientDetect(block, thresh=16, axis=1):
     return False
 
 if __name__ == "__main__":
-    fs, x = wavfile.read('test_signals/glockenspiel.wav')
+    fs, x = wavfile.read('../test_signals/castanet.wav')
     x = x[20000:500000,:] / 2**15
 
     plt.plot(x[:,0])
@@ -32,7 +33,8 @@ if __name__ == "__main__":
 
     for n in range(0, len(x), block_size):
         block = x[n:n+block_size]
-        ts[n:n+block_size] = float(parTransientDetect(block, thresh=16, axis=0))
+
+        ts[n:n+block_size] = float(parTransientDetect(block, thresh=4.5, axis=0))
 
     plt.plot(ts)
 
