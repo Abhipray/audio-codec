@@ -1,0 +1,14 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 12 14:20:19 2020
+# Reference file: /Users/Jan/Downloads/audio-codec-master/ListeningTests/Glockenspiel/glockenspiel.wav
+# Subject name/number: jatin
+Test file                   ,    Session 1,      Average
+glockenspiel_full+SBR_96.wav,        -2.00,        -2.00
+glockenspiel_bs_128.wav     ,        -1.00,        -1.00
+glockenspiel_bs_96.wav      ,        -1.50,        -1.50
+glockenspiel_base_96.wav    ,        -1.50,        -1.50
+glockenspiel_vq_128.wav     ,        -2.00,        -2.00
+glockenspiel_full_96.wav    ,        -2.00,        -2.00
+glockenspiel_full_128.wav   ,        -1.00,        -1.00
+glockenspiel_vq_96.wav      ,        -1.50,        -1.50
+glockenspiel_base_128.wav   ,        -1.50,        -1.50
