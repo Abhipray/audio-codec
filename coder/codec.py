@@ -18,7 +18,7 @@ from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
 from bitalloc import *  #allocates bits to scale factor bands given SMRs
 from gain_shape_quantize import quantize_gain_shape, dequantize_gain_shape
 
-K_FINE = 0
+K_FINE = -2
 
 
 def Decode(pb, bitAlloc, overallScaleFactor, codingParams):

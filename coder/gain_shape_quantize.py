@@ -23,7 +23,7 @@ from gain_shape_encoding import GainShapeEncoding
 
 log = logging.getLogger(__name__)
 
-SPLIT_BITS = 20
+SPLIT_BITS = 12
 
 
 def pvq_search(x: np.array, k: int):
