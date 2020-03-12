@@ -111,6 +111,10 @@ import os
 import matplotlib.pyplot as plt
 from sbr import *
 
+import logging
+# logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig()
+
 import numpy as np  # to allow conversion of data blocks to numpy's array object
 MAX16BITS = 32767
 SBR_FACTOR = 2
@@ -134,8 +138,8 @@ class PACFile(AudioFile):
             raise RuntimeError(
                 "Tried to read a non-PAC file into a PACFile object")
         # use struct.unpack() to load up all the header data
-        (sampleRate, nChannels, numSamples, nMDCTLines, nScaleBits, nMantSizeBits, useSBR) \
-                 = unpack('<LHLLHHH',self.fp.read(calcsize('<LHLLHHH')))
+        (sampleRate, nChannels, numSamples, nMDCTLines, nScaleBits, nMantSizeBits, useSBR, useVQ) \
+                 = unpack('<LHLLHHHH',self.fp.read(calcsize('<LHLLHHHH')))
         nBands = unpack('<L', self.fp.read(calcsize('<L')))[0]
         nLines = unpack('<' + str(nBands) + 'H',
                         self.fp.read(calcsize('<' + str(nBands) + 'H')))
@@ -155,6 +159,7 @@ class PACFile(AudioFile):
         myParams.sfBandsShort = sfBandsShort
         myParams.useSBR = bool(useSBR)
         myParams.omittedBands = omittedBands if myParams.useSBR else []
+        myParams.useVQ = bool(useVQ)
         # start w/o all zeroes as data from prior block to overlap-and-add for output
         overlapAndAdd = []
         for iCh in range(nChannels):
@@ -171,37 +176,44 @@ class PACFile(AudioFile):
         # extract the data from the PackedBits object
         overallScaleFactor = pb.ReadBits(
             codingParams.nScaleBits)  # overall scale factor
-        scaleFactor = []
         bitAlloc = []
-        mantissa = np.zeros(codingParams.nMDCTLines,
-                            np.int32)  # start w/ all mantissas zero
+        if not codingParams.useVQ:
+            scaleFactor = []
+            mantissa = np.zeros(codingParams.nMDCTLines,
+                                np.int32)  # start w/ all mantissas zero
         for iBand in range(sfBands.nBands):  # loop over each scale factor band to pack its data
             ba = pb.ReadBits(codingParams.nMantSizeBits)
             if ba:
                 ba += 1  # no bit allocation of 1 so ba of 2 and up stored as one less
             bitAlloc.append(ba)  # bit allocation for this band
-            scaleFactor.append(pb.ReadBits(
-                codingParams.nScaleBits))  # scale factor for this band
-            if bitAlloc[iBand]:
-                # if bits allocated, extract those mantissas and put in correct location in matnissa array
-                if iBand in codingParams.omittedBands and not curTrans:
-                        m = pb.ReadBits(bitAlloc[iBand])
-                else:
-                    m = np.empty(sfBands.nLines[iBand], np.int32)
-                    for j in range(sfBands.nLines[iBand]):
-                        m[j] = pb.ReadBits(
-                            bitAlloc[iBand]
-                        )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so encoded as 1 lower than actual allocation
-                mantissa[sfBands.lowerLine[iBand]:(sfBands.upperLine[iBand] + 1)] = m
+            if not codingParams.useVQ:
+                scaleFactor.append(pb.ReadBits(
+                    codingParams.nScaleBits))  # scale factor for this band
+                if bitAlloc[iBand]:
+                    # if bits allocated, extract those mantissas and put in correct location in matnissa array
+                    if iBand in codingParams.omittedBands and not curTrans:
+                            m = pb.ReadBits(bitAlloc[iBand])
+                    else:
+                        m = np.empty(sfBands.nLines[iBand], np.int32)
+                        for j in range(sfBands.nLines[iBand]):
+                            m[j] = pb.ReadBits(
+                                bitAlloc[iBand]
+                            )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so encoded as 1 lower than actual allocation
+                    mantissa[sfBands.lowerLine[iBand]:(sfBands.upperLine[iBand] + 1)] = m
         # done unpacking data (end loop over scale factor bands)
 
         # CUSTOM DATA:
         # < now can unpack any custom data passed in the nBytes of data >
 
         # (DECODE HERE) decode the unpacked data for this channel, overlap-and-add first half, and append it to the data array (saving other half for next overlap-and-add)
-        decodedData = self.Decode(scaleFactor, bitAlloc, mantissa,
-                                  overallScaleFactor, codingParams,
-                                  lastTrans, curTrans, nextTrans)
+        if codingParams.useVQ:
+            decodedData = self.Decode(None, bitAlloc, None,
+                                      overallScaleFactor, pb, codingParams,
+                                      lastTrans, curTrans, nextTrans)
+        else:
+            decodedData = self.Decode(scaleFactor, bitAlloc, mantissa,
+                                      overallScaleFactor, None, codingParams,
+                                      lastTrans, curTrans, nextTrans)
         
         return decodedData
 
@@ -290,10 +302,10 @@ class PACFile(AudioFile):
         codingParams.numSamples += codingParams.nMDCTLines  # due to the delay in processing the first samples on both sides of the MDCT block
         # write the coded file attributes
         self.fp.write(
-            pack('<LHLLHHH', codingParams.sampleRate, codingParams.nChannels,
+            pack('<LHLLHHHH', codingParams.sampleRate, codingParams.nChannels,
                  codingParams.numSamples, codingParams.nMDCTLines,
                  codingParams.nScaleBits, codingParams.nMantSizeBits,
-                 codingParams.useSBR))
+                 codingParams.useSBR, codingParams.useVQ))
         # create a ScaleFactorBand object to be used by the encoding process and write its info to header
         sfBands = ScaleFactorBands(
             AssignMDCTLinesFromFreqLimits(codingParams.nMDCTLines,
@@ -333,6 +345,33 @@ class PACFile(AudioFile):
                         iBand]  # no bit alloc = 1 so actuall alloc is one higher
         
         return nBytes
+
+    def WriiteEncodedBitsVQ(self, pb, codingParams, iCh, overallScaleFactor, bitAlloc, indices, idx_bits, curTrans=False):
+        if curTrans:
+            sfBands = codingParams.sfBandsShort
+        else:
+            sfBands = codingParams.sfBands
+
+        # now pack the nBytes of data into the PackedBits object
+        pb.WriteBits(overallScaleFactor[iCh], codingParams.nScaleBits)  # overall scale factor
+        
+        for iBand in range(sfBands.nBands):  # loop over each scale factor band to pack its data
+            ba = bitAlloc[iCh][iBand]
+            if ba:
+                ba -= 1  # if non-zero, store as one less (since no bit allocation of 1 bits/mantissa)
+            pb.WriteBits(ba, codingParams.nMantSizeBits)  # bit allocation for this band (written as one less if non-zero)
+
+        indices_ctr = 0
+        for iBand in range(sfBands.nBands):
+            if bitAlloc[iCh][iBand]:
+                if iBand in codingParams.omittedBands and not curTrans:
+                    pb.WriteBits(indices[iCh][indices_ctr][-1], idx_bits[iCh][indices_ctr][-1])
+                    indices_ctr += 1
+                else:
+                    for k, idx in enumerate(indices[iCh][indices_ctr]):
+                        pb.WriteBits(idx, idx_bits[iCh][indices_ctr][k])
+                    indices_ctr += 1
+        # done packing (end loop over scale factor bands)
 
     def writeEncodedBits(self, pb, codingParams, iCh, overallScaleFactor, bitAlloc, scaleFactor, mantissa, curTrans=False):
         if curTrans:
@@ -374,39 +413,69 @@ class PACFile(AudioFile):
         codingParams.priorBlock = data  # current pass's data is next pass's prior block data
 
         if not curTrans:
-            # (ENCODE HERE) Encode the full block of multi=channel data
-            (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(
-                fullBlockData, codingParams, lastTrans=lastTrans,
-                curTrans=curTrans, nextTrans=nextTrans
-            )  # returns a tuple with all the block-specific info not in the file header
+            if codingParams.useVQ:
+                (bitAlloc, indices, idx_bits, overallScaleFactor) = self.Encode(
+                    fullBlockData, codingParams, lastTrans=lastTrans,
+                    curTrans=curTrans, nextTrans=nextTrans
+                )  # returns a tuple with all the block-specific info not in the file header
+            else:
+                # (ENCODE HERE) Encode the full block of multi=channel data
+                (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(
+                    fullBlockData, codingParams, lastTrans=lastTrans,
+                    curTrans=curTrans, nextTrans=nextTrans
+                )  # returns a tuple with all the block-specific info not in the file header
         else:
             long = codingParams.nSamplesPerBlock
             short = 128
             codingParams.nSamplesPerBlock = short
             codingParams.nMDCTLines = short
 
-            scaleFactors = []
-            bitAllocs = []
-            mantissas = []
-            overallScaleFactors = []
-            pad = long // 2 - short // 2
-            for n in range(pad, 2*long-short-pad, short):
-                shortBlock = []
-                for iCh in range(codingParams.nChannels):
-                    if np.all(fullBlockData[iCh][n:n+2*short] == 0):
-                        codingParams.nSamplesPerBlock = long
-                        codingParams.nMDCTLines = long
-                        return
+            if codingParams.useVQ:
+                bitAllocs = []
+                indicess = []
+                idx_bitss = []
+                overallScaleFactors = []
+                pad = long // 2 - short // 2
+                for n in range(pad, 2*long-short-pad, short):
+                    shortBlock = []
+                    for iCh in range(codingParams.nChannels):
+                        if np.all(fullBlockData[iCh][n:n+2*short] == 0):
+                            codingParams.nSamplesPerBlock = long
+                            codingParams.nMDCTLines = long
+                            return
 
-                    shortBlock.append(fullBlockData[iCh][n:n+2*short])
+                        shortBlock.append(fullBlockData[iCh][n:n+2*short])
 
-                (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(
-                    shortBlock, codingParams, lastTrans=lastTrans, curTrans=curTrans, nextTrans=nextTrans)
-                
-                scaleFactors.append(scaleFactor)
-                bitAllocs.append(bitAlloc)
-                mantissas.append(mantissa)
-                overallScaleFactors.append(overallScaleFactor)
+                    (bitAlloc, indices, idx_bits, overallScaleFactor) = self.Encode(
+                        shortBlock, codingParams, lastTrans=lastTrans, curTrans=curTrans, nextTrans=nextTrans)
+
+                    bitAllocs.append(bitAlloc)
+                    indicess.append(indices)
+                    idx_bitss.append(idx_bits)
+                    overallScaleFactors.append(overallScaleFactor)
+            else:
+                scaleFactors = []
+                bitAllocs = []
+                mantissas = []
+                overallScaleFactors = []
+                pad = long // 2 - short // 2
+                for n in range(pad, 2*long-short-pad, short):
+                    shortBlock = []
+                    for iCh in range(codingParams.nChannels):
+                        if np.all(fullBlockData[iCh][n:n+2*short] == 0):
+                            codingParams.nSamplesPerBlock = long
+                            codingParams.nMDCTLines = long
+                            return
+
+                        shortBlock.append(fullBlockData[iCh][n:n+2*short])
+
+                    (scaleFactor, bitAlloc, mantissa, overallScaleFactor) = self.Encode(
+                        shortBlock, codingParams, lastTrans=lastTrans, curTrans=curTrans, nextTrans=nextTrans)
+
+                    scaleFactors.append(scaleFactor)
+                    bitAllocs.append(bitAlloc)
+                    mantissas.append(mantissa)
+                    overallScaleFactors.append(overallScaleFactor)
 
         # for each channel, write the data to the output file
         for iCh in range(codingParams.nChannels):
@@ -438,11 +507,18 @@ class PACFile(AudioFile):
             pb.WriteBits(nextTrans, 1)
 
             if not curTrans:
-                self.writeEncodedBits(pb, codingParams, iCh, overallScaleFactor, bitAlloc, scaleFactor, mantissa)
+                if codingParams.useVQ:
+                    self.WriiteEncodedBitsVQ(pb, codingParams, iCh, overallScaleFactor, bitAlloc, indices, idx_bits)
+                else:
+                    self.writeEncodedBits(pb, codingParams, iCh, overallScaleFactor, bitAlloc, scaleFactor, mantissa)
             else:
                 for n in range(len(bitAllocs)):
-                    self.writeEncodedBits(pb, codingParams, iCh, overallScaleFactors[n],
-                        bitAllocs[n], scaleFactors[n], mantissas[n], True)
+                    if codingParams.useVQ:
+                        self.WriiteEncodedBitsVQ(pb, codingParams, iCh, overallScaleFactors[n],
+                            bitAllocs[n], indicess[n], idx_bitss[n], True)
+                    else:
+                        self.writeEncodedBits(pb, codingParams, iCh, overallScaleFactors[n],
+                            bitAllocs[n], scaleFactors[n], mantissas[n], True)
                 
                 codingParams.nSamplesPerBlock = long
                 codingParams.nMDCTLines = long
@@ -477,12 +553,12 @@ class PACFile(AudioFile):
         and the overall scale factor for each channel.
         """
         #Passes encoding logic to the Encode function defined in the codec module
-        if codingParams.useSBR and not curTrans:
+        if codingParams.useSBR and not codingParams.useVQ and not curTrans:
             return codec.Encode_SBR(data, codingParams, lastTrans, curTrans, nextTrans)
         
         return codec.Encode(data, codingParams, lastTrans, curTrans, nextTrans)
 
-    def Decode(self, scaleFactor, bitAlloc, mantissa, overallScaleFactor,
+    def Decode(self, scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb,
                codingParams, lastTrans=False, curTrans=False, nextTrans=False):
         """
         Decodes a single audio channel of data based on the values of its scale factors,
@@ -491,11 +567,11 @@ class PACFile(AudioFile):
         #Passes decoding logic to the Decode function defined in the codec module
         if codingParams.useSBR and not curTrans:
             return codec.Decode_SBR(scaleFactor, bitAlloc, mantissa,
-                            overallScaleFactor, codingParams,
+                            overallScaleFactor, pb, codingParams,
                             lastTrans, curTrans, nextTrans)
         
         return codec.Decode(scaleFactor, bitAlloc, mantissa,
-                            overallScaleFactor, codingParams,
+                            overallScaleFactor, pb, codingParams,
                             lastTrans, curTrans, nextTrans)
 
 
@@ -546,6 +622,7 @@ if __name__ == "__main__":
                     codingParams.nMantSizeBits = 16
                     codingParams.targetBitsPerSample = data_rate / (codingParams.sampleRate / 1000)
                     codingParams.useSBR = True if data_rate < 128 else False
+                    codingParams.useVQ = True
                     # tell the PCM file how large the block size is
                     codingParams.nSamplesPerBlock = codingParams.nMDCTLines
                 else:  # "Decode"
