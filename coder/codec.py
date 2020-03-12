@@ -41,7 +41,7 @@ def Decode(pb, bitAlloc, overallScaleFactor, codingParams):
             mdctLine[iMant:(iMant + nLines)] = dequantize_gain_shape(
                 pb, int(bitAlloc[iBand] * nLines), nLines, k_fine=K_FINE)
         iMant += nLines
-    mdctLine /= rescaleLevel  # put overall gain back to original level
+    # mdctLine /= rescaleLevel  # put overall gain back to original level
 
     # IMDCT and window the data for this channel
     data = SineWindow(IMDCT(mdctLine, halfN,
@@ -87,10 +87,8 @@ def EncodeSingleChannel(data, codingParams):
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
     bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
-    bitBudget -= nScaleBits * (
-        sfBands.nBands + 1
-    )  # less scale factor bits (including overall scale factor)
-    bitBudget -= codingParams.nMantSizeBits * sfBands.nBands  # less mantissa bit allocation bits
+    bitBudget -= nScaleBits  # Overall scale factor
+    bitBudget -= codingParams.nMantSizeBits * sfBands.nBands  # less bit allocation bits
 
     # window data for side chain FFT and also window and compute MDCT
     timeSamples = data
@@ -108,7 +106,7 @@ def EncodeSingleChannel(data, codingParams):
     SMRs = CalcSMRs(timeSamples, mdctLines, overallScale,
                     codingParams.sampleRate, sfBands)
 
-    # mdctLines /= (1 << overallScale)  #Renormalize back to usual
+    mdctLines /= (1 << overallScale)  #Renormalize back to usual
 
     # perform bit allocation using SMR results
     bitAlloc = BitAlloc(bitBudget, maxMantBits, sfBands.nBands, sfBands.nLines,
@@ -122,7 +120,7 @@ def EncodeSingleChannel(data, codingParams):
         if not bitAlloc[iBand]:
             nMant -= sfBands.nLines[
                 iBand]  # account for mantissas not being transmitted
-    mantissa = np.empty(nMant, dtype=np.int32)
+
     all_indices = []
     all_idx_bits = []
 
