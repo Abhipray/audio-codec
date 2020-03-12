@@ -1,0 +1,14 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 12 14:10:13 2020
+# Reference file: /Users/abhipray/Google Drive/stanford_courses/MUSIC422_audio_coding/audio-codec/ListeningTests/Castanet/castanet.wav
+# Subject name/number: Abhi
+Test file               ,    Session 1,      Average
+castanet_vq_128.wav     ,        -0.10,        -0.10
+castanet_full_128.wav   ,         0.00,         0.00
+castanet_base_128.wav   ,        -1.00,        -1.00
+castanet_bs_96.wav      ,        -3.00,        -3.00
+castanet_vq_96.wav      ,        -2.50,        -2.50
+castanet_base_96.wav    ,        -2.00,        -2.00
+castanet_full_96.wav    ,        -1.00,        -1.00
+castanet_full+SBR_96.wav,        -0.50,        -0.50
+castanet_bs_128.wav     ,        -2.00,        -2.00

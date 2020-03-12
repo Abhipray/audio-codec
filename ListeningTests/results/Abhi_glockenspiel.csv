@@ -1,0 +1,14 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 12 14:14:26 2020
+# Reference file: /Users/abhipray/Google Drive/stanford_courses/MUSIC422_audio_coding/audio-codec/ListeningTests/Glockenspiel/glockenspiel.wav
+# Subject name/number: Abhi
+Test file                   ,    Session 1,      Average
+glockenspiel_full+SBR_96.wav,        -0.40,        -0.40
+glockenspiel_full_96.wav    ,        -1.00,        -1.00
+glockenspiel_base_128.wav   ,        -1.00,        -1.00
+glockenspiel_full_128.wav   ,        -0.90,        -0.90
+glockenspiel_bs_96.wav      ,         0.00,         0.00
+glockenspiel_vq_96.wav      ,        -1.50,        -1.50
+glockenspiel_bs_128.wav     ,         0.00,         0.00
+glockenspiel_vq_128.wav     ,        -1.60,        -1.60
+glockenspiel_base_96.wav    ,        -0.30,        -0.30
