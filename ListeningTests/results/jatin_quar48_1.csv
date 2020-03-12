@@ -2,12 +2,13 @@
 # Administered on Thu Mar 12 14:22:45 2020
 # Reference file: /Users/Jan/Downloads/audio-codec-master/ListeningTests/Quartet/quar48_1.wav
 # Subject name/number: jatin
-Test file            ,    Session 1,      Average
-quar48_1_bs_128.wav  ,         0.00,         0.00
-quar48_1_vq_128.wav  ,        -1.50,        -1.50
-quar48_1_full_128.wav,        -0.50,        -0.50
-quar48_1_base_128.wav,         0.00,         0.00
-quar48_1_full_96.wav ,        -3.00,        -3.00
-quar48_1_base_96.wav ,         0.00,         0.00
-quar48_1_vq_96.wav   ,        -2.00,        -2.00
-quar48_1_bs_96.wav   ,        -1.50,        -1.50
+Test file               ,    Session 1,      Average
+quar48_1_bs_128.wav     ,         0.00,         0.00
+quar48_1_vq_128.wav     ,        -1.50,        -1.50
+quar48_1_full_128.wav   ,        -0.50,        -0.50
+quar48_1_base_128.wav   ,         0.00,         0.00
+quar48_1_full_96.wav    ,        -3.00,        -3.00
+quar48_1_full+SBR_96.wav,        -3.00,        -3.00
+quar48_1_base_96.wav    ,         0.00,         0.00
+quar48_1_vq_96.wav      ,        -2.00,        -2.00
+quar48_1_bs_96.wav      ,        -1.50,        -1.50
