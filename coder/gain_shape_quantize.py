@@ -24,7 +24,7 @@ from bitpack import PackedBits
 
 log = logging.getLogger(__name__)
 
-SPLIT_BITS = 32
+SPLIT_BITS = 16
 
 
 def pvq_search(x: np.array, k: int):
@@ -307,7 +307,7 @@ def bit_allocation_ms(num_bits, theta, length, k_fine=0):
 
 
 def split_band_encode(x, bit_alloc, k_fine=0):
-    if bit_alloc > SPLIT_BITS:
+    if bit_alloc > SPLIT_BITS and len(x) > 6:
         log.debug(f'Splitting because bit alloc is {bit_alloc}')
         # MS coding with split bands
         # Split the band in half
@@ -392,7 +392,7 @@ def split_band_encode(x, bit_alloc, k_fine=0):
 
 
 def split_band_decode(pb, num_bits, band_size, k_fine=0):
-    if num_bits > SPLIT_BITS:
+    if num_bits > SPLIT_BITS and band_size > 6:
         half_band = int(np.ceil(band_size / 2))
         a_theta, _, _ = bit_allocation_ms(num_bits, 0, half_band, k_fine)
         log.debug(f'bitalloc theta: {a_theta}')

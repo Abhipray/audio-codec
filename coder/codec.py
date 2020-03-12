@@ -41,7 +41,7 @@ def Decode(pb, bitAlloc, overallScaleFactor, codingParams):
             mdctLine[iMant:(iMant + nLines)] = dequantize_gain_shape(
                 pb, int(bitAlloc[iBand] * nLines), nLines, k_fine=K_FINE)
         iMant += nLines
-    # mdctLine /= rescaleLevel  # put overall gain back to original level
+    mdctLine /= rescaleLevel  # put overall gain back to original level
 
     # IMDCT and window the data for this channel
     data = SineWindow(IMDCT(mdctLine, halfN,
@@ -106,7 +106,7 @@ def EncodeSingleChannel(data, codingParams):
     SMRs = CalcSMRs(timeSamples, mdctLines, overallScale,
                     codingParams.sampleRate, sfBands)
 
-    mdctLines /= (1 << overallScale)  #Renormalize back to usual
+    # mdctLines /= (1 << overallScale)  #Renormalize back to usual
 
     # perform bit allocation using SMR results
     bitAlloc = BitAlloc(bitBudget, maxMantBits, sfBands.nBands, sfBands.nLines,
@@ -138,9 +138,11 @@ def EncodeSingleChannel(data, codingParams):
             print('bit alloc: ', band_budget, len(x))
             indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
             if sum(bits) == 0:
+                print('setting bits to zero')
                 bitAlloc[iBand] = 0
-            all_indices.append(indices)
-            all_idx_bits.append(bits)
+            else:
+                all_indices.append(indices)
+                all_idx_bits.append(bits)
 
     # end of loop over scale factor bands
 
