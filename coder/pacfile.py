@@ -566,7 +566,8 @@ class PACFile(AudioFile):
         bit allocations, quantized mantissas, and overall scale factor.
         """
         #Passes decoding logic to the Decode function defined in the codec module
-        if codingParams.useSBR and not curTrans:
+        if codingParams.useSBR and not curTrans and np.any(np.array(bitAlloc)[np.array(codingParams.omittedBands)] != 0):
+            print('decoding SBR!')
             return codec.Decode_SBR(scaleFactor, bitAlloc, mantissa,
                             overallScaleFactor, pb, codingParams,
                             lastTrans, curTrans, nextTrans)
@@ -579,8 +580,8 @@ class PACFile(AudioFile):
 #-----------------------------------------------------------------------------
 
 input_dir = Path('../test_signals')
-output_dir = Path('../test_decoded')
-bitrates = [128]
+output_dir = Path('../test_vq_sbr_int')
+bitrates = [96]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -594,7 +595,7 @@ if __name__ == "__main__":
     for data_rate in bitrates:
         for in_file in input_dir.glob('*.wav'):
             for Direction in ("Encode", "Decode"):
-                #    for Direction in ("Decode"):
+            # for Direction in ("Decode"):
                 print(f'Processing {in_file} at {data_rate}kbps')
                 # create the audio file objects
                 if Direction == "Encode":
@@ -622,7 +623,7 @@ if __name__ == "__main__":
                     codingParams.nScaleBits = 4
                     codingParams.nMantSizeBits = 16
                     codingParams.targetBitsPerSample = data_rate / (codingParams.sampleRate / 1000)
-                    codingParams.useSBR = False # True if data_rate < 128 else False
+                    codingParams.useSBR = True if data_rate < 128 else False
                     codingParams.useVQ = True
                     # tell the PCM file how large the block size is
                     codingParams.nSamplesPerBlock = codingParams.nMDCTLines

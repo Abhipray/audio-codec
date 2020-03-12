@@ -94,36 +94,24 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingPa
     # vDequantize = np.vectorize(Dequantize)
 
     # reconstitute the first halfN MDCT lines of this channel from the stored data
-    vDQFP = np.vectorize(DequantizeFP)
     mdctLine = np.zeros(halfN, dtype=np.float64)
     iMant = 0
     for iBand in range(codingParams.sfBands.nBands):
         nLines = codingParams.sfBands.nLines[iBand]
+
+        if iBand in codingParams.omittedBands:
+            nLines = 1
+
         if bitAlloc[iBand]:
-            if iBand in codingParams.omittedBands:
-                # setting the whole band to a scalar value
-                if codingParams.useVQ:
-                    bits_gain = bitAlloc[iBand]
-                    gain_idx = pb.ReadBits(bits_gain)
-                    gain_unquantized = DequantizeUniform(gain_idx, bits_gain)
-                    gain = inv_mu_law_fn(gain_unquantized) * nLines
-                    mdctLine[iMant:(iMant + nLines)] = gain
-                else:
-                    mdctLine[iMant:(iMant + nLines)] = vDQFP(
-                        scaleFactor[iBand], mantissa[iMant:(iMant+nLines)],
-                        codingParams.nScaleBits, bitAlloc[iBand])
+            if codingParams.useVQ:
+                # Reconstruct MDCT lines from VQ
+                mdctLine[iMant:(iMant + nLines)] = dequantize_gain_shape(
+                    pb, int(bitAlloc[iBand] * nLines), nLines, k_fine=K_FINE)
             else:
-                if codingParams.useVQ:
-                    # Reconstruct MDCT lines from VQ
-                    mdctLine[iMant:(iMant + nLines)] = dequantize_gain_shape(
-                        pb, int(bitAlloc[iBand] * nLines), nLines, k_fine=K_FINE)
-                else:
-                    mdctLine[iMant:(iMant + nLines)] = vDequantize(
-                        scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
-                        codingParams.nScaleBits, bitAlloc[iBand])
+                mdctLine[iMant:(iMant + nLines)] = vDequantize(
+                    scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
+                    codingParams.nScaleBits, bitAlloc[iBand])
         iMant += nLines
-    if not codingParams.useVQ:
-        mdctLine /= rescaleLevel  # put overall gain back to original level
 
     # we can smooth this step function of the envelope with a Gaussian kernel to generate a nicer step function
     # the sigma function here controls the smoothing--probably needs some tuning
@@ -141,30 +129,24 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingPa
     num_omitted = len(mdctLine)-omit_cutoff
     factor = len(mdctLine)/num_omitted
     factor = floor(factor)
+    up_factor = factor
+    
+    mdct_spacing = codingParams.sampleRate/(2*codingParams.nMDCTLines)
+    mdct_freqs = (np.arange(codingParams.nMDCTLines)+1/2)*(mdct_spacing)
 
     # this works i promise. This interpolates the lower frequencies in order to transpose upward
     # This I expect to be helpful because mdct has an offset we need to acct for
-    interp_indices = np.arange(omit_cutoff//factor, len(mdctLine)//factor + 1)
-    interp_pieces = mdctLine[interp_indices]
-
+    interp_indices = np.arange(omit_cutoff//up_factor - 1, len(mdctLine)//up_factor + 1)
+    interp_x = mdct_freqs[interp_indices]
+    interp_y = mdctLine[interp_indices]
+    
     # for now, do a piecewise linear interpolation. Could try doing quadratic or cubic too
-    interp_fn = interpolate.interp1d(interp_indices, interp_pieces, kind='slinear')
-    new_freqs = np.arange(omit_cutoff/factor + 1/4*(factor-1), len(mdctLine)/factor + 1/4*(factor-1), 1/factor)
-    #print('new freqs len', len(new_freqs))
-    #print('num omitted', num_omitted)
-
+    interp_fn = interpolate.interp1d(interp_x, interp_y, kind='slinear')
+    new_freqs = mdct_freqs[omit_cutoff:]/up_factor
+    
     filers = interp_fn(new_freqs)
-    #print('fillers', filers)
-    #print('hello')
-    #print()
-    #print('orig', interp_pieces)
+    
     mdctLine[omit_cutoff:] = filers
-
-    # OLD: if the factor does not perfectly divide omit_cutoff, we would be introducing an offset unless we accounted for this
-    # filers =  np.repeat(interp_pieces, factor)
-    #num_pre_pieces = factor - omit_cutoff % factor
-    #filers = filers[num_pre_pieces:]
-    #mdctLine[omit_cutoff:] =filers[:num_omitted]
 
     #plt.figure(figsize=(12, 8))
     #plt.title('Envelope')
@@ -288,7 +270,7 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
     window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
     mdctTimeSamples = window(data)
     mdctLines = MDCT(mdctTimeSamples, halfN, halfN)[:halfN]
-
+         
     # compute overall scale factor for this block and boost mdctLines using it
     maxLine = np.max(np.abs(mdctLines))
     overallScale = ScaleFactor(
@@ -362,24 +344,39 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
         # return results
         return (scaleFactor, bitAlloc, mantissa, overallScale)
 
-
 def Encode_SBR(data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
     """Encodes a multi-channel block of signed-fraction data based on the parameters in a PACFile object"""
-    scaleFactor = []
-    bitAlloc = []
-    mantissa = []
-    overallScaleFactor = []
+    if codingParams.useVQ:
+        bitAlloc = []
+        indices = []
+        idx_bits = []
+        overall_scale = []
 
-    # loop over channels and separately encode each one
-    for iCh in range(codingParams.nChannels):
-        (s, b, m, o) = EncodeSingleChannel_SBR(data[iCh], codingParams, lastTrans, curTrans, nextTrans)
-        scaleFactor.append(s)
-        bitAlloc.append(b)
-        mantissa.append(m)
-        overallScaleFactor.append(o)
-    # return results bundled over channels
-    return (scaleFactor, bitAlloc, mantissa, overallScaleFactor)
+        # loop over channels and separately encode each one
+        for iCh in range(codingParams.nChannels):
+            (b, m, o, s) = EncodeSingleChannel_SBR(data[iCh], codingParams, lastTrans, curTrans, nextTrans)
+            bitAlloc.append(b)
+            indices.append(m)
+            idx_bits.append(o)
+            overall_scale.append(s)
+        # return results bundled over channels
+        return (bitAlloc, indices, idx_bits, overall_scale)
 
+    else:
+        scaleFactor = []
+        bitAlloc = []
+        mantissa = []
+        overallScaleFactor = []
+
+        # loop over channels and separately encode each one
+        for iCh in range(codingParams.nChannels):
+            (s, b, m, o) = EncodeSingleChannel_SBR(data[iCh], codingParams, lastTrans, curTrans, nextTrans)
+            scaleFactor.append(s)
+            bitAlloc.append(b)
+            mantissa.append(m)
+            overallScaleFactor.append(o)
+        # return results bundled over channels
+        return (scaleFactor, bitAlloc, mantissa, overallScaleFactor)
 
 def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False, nextTrans=False):
     """Encodes a single-channel block of signed-fraction data based on the parameters in a PACFile object"""
@@ -410,12 +407,16 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
     window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
     mdctTimeSamples = window(data)
     mdctLines = MDCT(mdctTimeSamples, halfN, halfN)[:halfN]
+    fftLines = np.abs(np.fft.rfft(HanningWindow(data)))/codingParams.nMDCTLines # compute fft for transmitting the envelope of the signal
+    maxFFTLine = np.max(fftLines)
 
     # compute overall scale factor for this block and boost mdctLines using it
     maxLine = np.max(np.abs(mdctLines))
+    maxLine = max(maxLine, maxFFTLine) # make sure we are all in the range (-1, 1) FFT and MDCT
     overallScale = ScaleFactor(
         maxLine, nScaleBits)  #leading zeroes don't depend on nMantBits
     mdctLines *= (1 << overallScale)
+    fftLines *= (1 << overallScale)
 
     # compute the mantissa bit allocations
     # compute SMRs in side chain FFT
@@ -436,31 +437,62 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
                 iBand]  # account for mantissas not being transmitted
         elif iBand in omittedBands:
             nMant -= (sfBands.nLines[iBand] - 1)
-    mantissa = np.empty(nMant, dtype=np.int32)
-    iMant = 0
-    for iBand in range(sfBands.nBands):
-        lowLine = sfBands.lowerLine[iBand]
-        highLine = sfBands.upperLine[
-            iBand] + 1  # extra value is because slices don't include last value
-        nLines = sfBands.nLines[iBand]
-        
-        if bitAlloc[iBand]:
+    if codingParams.useVQ:
+        all_indices = []
+        all_idx_bits = []
+        for iBand in range(sfBands.nBands):
+            lowLine = sfBands.lowerLine[iBand]
+            highLine = sfBands.upperLine[
+                iBand] + 1  # extra value is because slices don't include last value
+            nLines = sfBands.nLines[iBand]
             if iBand in omittedBands:
-                scaleLine = np.mean(np.abs(mdctLines[lowLine:highLine]))
-                scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
-                                                 bitAlloc[iBand])
-                mantissa[iMant] = MantissaFP(scaleLine, scaleFactor[iBand], nScaleBits, bitAlloc[iBand])
-                iMant += 1
-            else:
-                scaleLine = np.max(np.abs(mdctLines[lowLine:highLine]))
-                scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
-                                                 bitAlloc[iBand])
-                mantissa[iMant:iMant + nLines] = vMantissa(
-                    mdctLines[lowLine:highLine], scaleFactor[iBand], nScaleBits,
-                    bitAlloc[iBand])
-                iMant += nLines
-    # end of loop over scale factor bands
+                nLines = 1
 
-    # return results
-    return (scaleFactor, bitAlloc, mantissa, overallScale)
+            if bitAlloc[iBand]:
+                x = mdctLines[lowLine:
+                          highLine]  # Input vector for vector quantization
+                if iBand in omittedBands:
+                    x = fftLines[lowLine:highLine]
+                    x = np.array([np.mean(np.abs(x))])
+
+                # perform the vector quantization
+                band_budget = int(bitAlloc[iBand] * nLines)
+                indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
+                print(indices)
+                print(bits)
+                if sum(bits) == 0:
+                    bitAlloc[iBand] = 0
+                else:
+                    all_indices.append(indices)
+                    all_idx_bits.append(bits)
+        # end of loop over scale factor bands
+
+        # return results
+        return (bitAlloc, all_indices, all_idx_bits, overallScale)
+    else:
+        mantissa = np.empty(nMant, dtype=np.int32)
+        iMant = 0
+        for iBand in range(sfBands.nBands):
+            lowLine = sfBands.lowerLine[iBand]
+            highLine = sfBands.upperLine[
+                iBand] + 1  # extra value is because slices don't include last value
+            nLines = sfBands.nLines[iBand]
+            scaleLine = np.max(np.abs(mdctLines[lowLine:highLine]))
+            scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
+                                             bitAlloc[iBand])
+            if bitAlloc[iBand]:
+                if iBand in omittedBands:
+                    scaleLine = np.mean(fftLines[lowLine:highLine])
+                    scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
+                                                     bitAlloc[iBand])
+                    mantissa[iMant] = vMantissa(scaleLine, scaleFactor[iBand], nScaleBits, bitAlloc[iBand])
+                    iMant += 1
+                else:
+                    mantissa[iMant:iMant + nLines] = vMantissa(
+                        mdctLines[lowLine:highLine], scaleFactor[iBand], nScaleBits,
+                        bitAlloc[iBand])
+                    iMant += nLines
+
+        # return results
+        return (scaleFactor, bitAlloc, mantissa, overallScale)
 
