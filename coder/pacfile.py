@@ -108,12 +108,13 @@ from detect_transients import parTransientDetect
 from psychoac import ScaleFactorBands, AssignMDCTLinesFromFreqLimits  # defines the grouping of MDCT lines into scale factor bands
 from pathlib import Path
 import os
+import sys
 import matplotlib.pyplot as plt
 from sbr import *
 
 import logging
 # logging.basicConfig(level=logging.DEBUG)
-logging.basicConfig()
+# logging.basicConfig()
 
 import numpy as np  # to allow conversion of data blocks to numpy's array object
 MAX16BITS = 32767
@@ -584,7 +585,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
 if __name__ == "__main__":
-
+    sys.setrecursionlimit(6000)
     print("\nTesting the PAC coder (input.wav -> coded.pac -> output.wav):")
     import time
     from pcmfile import *  # to get access to WAV file handling
@@ -621,7 +622,7 @@ if __name__ == "__main__":
                     codingParams.nScaleBits = 4
                     codingParams.nMantSizeBits = 16
                     codingParams.targetBitsPerSample = data_rate / (codingParams.sampleRate / 1000)
-                    codingParams.useSBR = True if data_rate < 128 else False
+                    codingParams.useSBR = False # True if data_rate < 128 else False
                     codingParams.useVQ = True
                     # tell the PCM file how large the block size is
                     codingParams.nSamplesPerBlock = codingParams.nMDCTLines
@@ -660,9 +661,8 @@ if __name__ == "__main__":
                         if not data: break  # we hit the end of the input file
                         outFile.WriteDataBlock(data, codingParams)
                     
-                    print(
-                        ".",
-                        end="")  # just to signal how far we've gotten to user
+                    print(".", end="", flush=True
+                          )  # just to signal how far we've gotten to user
                 # end loop over reading/writing the blocks
 
                 # close the files

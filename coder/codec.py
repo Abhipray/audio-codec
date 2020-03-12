@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 from scipy import interpolate
 from gain_shape_quantize import quantize_gain_shape, dequantize_gain_shape, mu_law_fn, inv_mu_law_fn
 
-K_FINE = -2
+K_FINE = 0
 SHORT=256
 def getCorrectWindow(lastTrans, curTrans, nextTrans, Nlong=2048):
     if curTrans:
@@ -71,8 +71,7 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, pb, codingParams
                     scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
                     codingParams.nScaleBits, bitAlloc[iBand])
         iMant += nLines
-    if not codingParams.useVQ:
-        mdctLine /= rescaleLevel  # put overall gain back to original level
+    mdctLine /= rescaleLevel  # put overall gain back to original level
 
     # IMDCT and window the data for this channel
     window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
@@ -303,8 +302,8 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
 
     # mdct_spl = SPL(4.0 * ((mdctLines / (2**overallScale))**2.0))
     # peaks_in_bands = np.zeros(sfBands.nBands)
-    if codingParams.useVQ:
-        mdctLines /= (1 << overallScale)
+    # if codingParams.useVQ:
+    #     mdctLines /= (1 << overallScale)
 
     # perform bit allocation using SMR results
     bitAlloc = BitAlloc(bitBudget, maxMantBits, sfBands.nBands, sfBands.nLines,
@@ -335,8 +334,9 @@ def EncodeSingleChannel(data, codingParams, lastTrans=False, curTrans=False, nex
                 indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
                 if sum(bits) == 0:
                     bitAlloc[iBand] = 0
-                all_indices.append(indices)
-                all_idx_bits.append(bits)
+                else:
+                    all_indices.append(indices)
+                    all_idx_bits.append(bits)
         # end of loop over scale factor bands
 
         # return results
