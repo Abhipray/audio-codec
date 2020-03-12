@@ -17,6 +17,7 @@ from quantize import *  # using vectorized versions (to use normal versions, unc
 from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
 from bitalloc import *  #allocates bits to scale factor bands given SMRs
 from sbr import *
+from window import *
 from scipy.ndimage import gaussian_filter1d
 from math import floor, ceil
 import matplotlib.pyplot as plt
@@ -347,12 +348,14 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
     window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
     mdctTimeSamples = window(data)
     mdctLines = MDCT(mdctTimeSamples, halfN, halfN)[:halfN]
+    fftLines = np.abs(np.fft.rfft(HanningWindow(data))) # compute fft for transmitting the envelope of the signal
 
     # compute overall scale factor for this block and boost mdctLines using it
     maxLine = np.max(np.abs(mdctLines))
     overallScale = ScaleFactor(
         maxLine, nScaleBits)  #leading zeroes don't depend on nMantBits
     mdctLines *= (1 << overallScale)
+    fftLines *= (1 << overallScale)
 
     # compute the mantissa bit allocations
     # compute SMRs in side chain FFT
@@ -383,7 +386,7 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
         
         if bitAlloc[iBand]:
             if iBand in omittedBands:
-                scaleLine = np.mean(np.abs(mdctLines[lowLine:highLine]))
+                scaleLine = np.mean(fftLines[lowLine:highLine])
                 scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
                                                  bitAlloc[iBand])
                 mantissa[iMant] = MantissaFP(scaleLine, scaleFactor[iBand], nScaleBits, bitAlloc[iBand])
