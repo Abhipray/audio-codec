@@ -1,0 +1,14 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 12 14:27:31 2020
+# Reference file: /Users/arda/Documents/PhD/Classes/WI19/MUS422/proj/audio-codec/ListeningTests/Harpsichord/harpsichord.wav
+# Subject name/number: arda
+Test file                  ,    Session 1,      Average
+harpsichord_vq_128.wav     ,        -0.50,        -0.50
+harpsichord_full+SBR_96.wav,        -1.50,        -1.50
+harpsichord_full_128.wav   ,        -1.10,        -1.10
+harpsichord_full_96.wav    ,        -1.60,        -1.60
+harpsichord_bs_128.wav     ,        -1.00,        -1.00
+harpsichord_vq_96.wav      ,        -1.30,        -1.30
+harpsichord_base_96.wav    ,        -1.20,        -1.20
+harpsichord_bs_96.wav      ,        -1.50,        -1.50
+harpsichord_base_128.wav   ,        -0.50,        -0.50

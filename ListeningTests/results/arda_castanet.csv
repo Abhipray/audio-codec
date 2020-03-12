@@ -1,0 +1,14 @@
+# ITU-R BS.1116-based test
+# Administered on Thu Mar 12 14:19:56 2020
+# Reference file: /Users/arda/Documents/PhD/Classes/WI19/MUS422/proj/audio-codec/ListeningTests/Castanet/castanet.wav
+# Subject name/number: arda
+Test file               ,    Session 1,      Average
+castanet_full+SBR_96.wav,        -0.50,        -0.50
+castanet_full_128.wav   ,        -0.50,        -0.50
+castanet_bs_96.wav      ,        -2.00,        -2.00
+castanet_base_128.wav   ,        -0.80,        -0.80
+castanet_vq_96.wav      ,        -2.00,        -2.00
+castanet_vq_128.wav     ,        -0.90,        -0.90
+castanet_base_96.wav    ,        -1.10,        -1.10
+castanet_full_96.wav    ,        -0.80,        -0.80
+castanet_bs_128.wav     ,        -0.40,        -0.40
