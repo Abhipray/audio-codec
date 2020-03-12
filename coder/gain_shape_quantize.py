@@ -455,7 +455,7 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
 
     # Separate gain and shape
     gain = np.linalg.norm(x)
-    shape = x / gain
+    shape = x / (gain + np.finfo(float).eps)
 
     # Encode the shape of the band using split_encode
     indices, bits = split_band_encode(shape, bits_shape, k_fine)
