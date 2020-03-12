@@ -24,7 +24,7 @@ from bitpack import PackedBits
 
 log = logging.getLogger(__name__)
 
-SPLIT_BITS = 16
+SPLIT_BITS = 24
 
 
 def pvq_search(x: np.array, k: int):
