@@ -466,19 +466,24 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
     gain = np.linalg.norm(x)
 
     if gain != 0:
-        # Encode the shape of the band using split_encode
-        shape = x / gain
-        log.debug(shape)
-        indices, bits = split_band_encode(shape, bits_shape, k_fine)
-        total_used_bits = sum(bits)
+        if bits_shape != 0:
+            # Encode the shape of the band using split_encode
+            shape = x / gain
+            log.debug(shape)
+            indices, bits = split_band_encode(shape, bits_shape, k_fine)
+            total_used_bits = sum(bits)
+            assert total_used_bits <= bits_shape, "Used more bits than allocated in quantize"
+            # Mu-law scalar quantize gain
+            bits_gain += bits_shape - total_used_bits
+            log.debug(
+                f'Actual bits_gain: {bits_gain} bits_shape {total_used_bits}')
 
-        # Mu-law scalar quantize gain
-        bits_gain += bits_shape - total_used_bits
-        log.debug(f"original gain: {gain}")
+        else:
+            indices = []
+            bits = []
         gain = mu_law_fn(gain / L)
+        log.debug(f"original gain: {gain}")
         gain_idx = QuantizeUniform(gain, bits_gain)
-        log.debug(
-            f'Actual bits_gain: {bits_gain} bits_shape {total_used_bits}')
 
         indices = indices + [gain_idx]
         bits = bits + [bits_gain]
@@ -495,13 +500,17 @@ def dequantize_gain_shape(pb, bit_alloc, L, k_fine=0):
     # if bit_alloc > 32 and bits_gain < 16:
     #     bits_gain = 16
     #     bits_shape = bit_alloc - bits_gain
+    if bits_shape != 0:
+        # Find k that satisfies R_shape
+        shape, bits_used = split_band_decode(pb, bits_shape, L, k_fine)
+        assert bits_used <= bits_shape, "Used more bits than allocated in dequantize"
+        # Reconstruct the gain
+        # Mu-law scalar dequantize gain
+        bits_gain += (bits_shape - bits_used)
+    else:
+        shape = np.ones((L, ))
+        bits_used = bits_shape
 
-    # Find k that satisfies R_shape
-    shape, bits_used = split_band_decode(pb, bits_shape, L, k_fine)
-
-    # Reconstruct the gain
-    # Mu-law scalar dequantize gain
-    bits_gain += (bits_shape - bits_used)
     log.debug(f'Gain bits: {bits_gain}, {bits_used}')
     gain_idx = pb.ReadBits(bits_gain)
 
