@@ -2,12 +2,13 @@
 # Administered on Thu Mar 12 14:23:59 2020
 # Reference file: /Users/Jan/Downloads/audio-codec-master/ListeningTests/spmg/spmg.wav
 # Subject name/number: jatin
-Test file        ,    Session 1,      Average
-spmg_full_128.wav,        -0.50,        -0.50
-spmg_bs_128.wav  ,        -1.00,        -1.00
-spmg_bs_96.wav   ,        -2.50,        -2.50
-spmg_vq_128.wav  ,        -0.50,        -0.50
-spmg_base_96.wav ,        -2.00,        -2.00
-spmg_full_96.wav ,        -2.00,        -2.00
-spmg_base_128.wav,        -0.50,        -0.50
-spmg_vq_96.wav   ,        -1.50,        -1.50
+Test file           ,    Session 1,      Average
+spmg_full_128.wav   ,        -0.50,        -0.50
+spmg_bs_128.wav     ,        -1.00,        -1.00
+spmg_bs_96.wav      ,        -2.50,        -2.50
+spmg_vq_128.wav     ,        -0.50,        -0.50
+spmg_base_96.wav    ,        -2.00,        -2.00
+spmg_full_96.wav    ,        -2.00,        -2.00
+spmg_base_128.wav   ,        -0.50,        -0.50
+spmg_vq_96.wav      ,        -1.50,        -1.50
+spmg_full+SBR_96.wav,        -2.00,        -2.00
