@@ -62,6 +62,10 @@ def gain_shape_alloc(R, L, k_fine):
     return int(R_gain), int(R_shape)
 
 
+cache = {}
+
+
+# @np_cache(maxsize=int(1e6))
 def pvq_codebook_size(L, K, N=None):
     """Computes a table N(L,K) that contains the size of the codebook described by the PVQ S(L,K)
     
@@ -72,8 +76,14 @@ def pvq_codebook_size(L, K, N=None):
     Returns:
         [np.array]: table N(L,K)
     """
+    global cache
+    # print(L, K)
     if N is None:
         N = np.ones((L + 1, K + 1), dtype=np.int) * -1
+    if (L, K) in cache:
+        # print('cache hit', (L, K), cache.keys())
+        N[:L + 1, :K + 1] = cache[(L, K)][:L + 1, :K + 1]
+        return N
     if L >= 0 and K == 0:
         N[:L + 1, K] = 1
         return N
@@ -87,7 +97,7 @@ def pvq_codebook_size(L, K, N=None):
     if N[L][K - 1] == -1:
         pvq_codebook_size(L, K - 1, N)
     N[L][K] = N[L - 1][K] + N[L - 1][K - 1] + N[L][K - 1]
-
+    cache[(L, K)] = N[:L + 1, :K + 1]
     return N
 
 
