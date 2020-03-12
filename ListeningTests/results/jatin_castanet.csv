@@ -1,13 +1,4 @@
 # ITU-R BS.1116-based test
-# Administered on Wed Mar 11 20:08:53 2020
-# Reference file: /Users/Jan/Stanford/Music_422/FinalProject/ListeningTests/castanets/castanet.wav
-# Subject name/number: jatin
-Test file                        ,    Session 1,      Average
-castanet_out_128kbps_baseline.wav,        -2.00,        -2.00
-castanet_out_96kbps_DAMSAC.wav   ,        -2.00,        -2.00
-castanet_out_96kbps_baseline.wav ,        -3.00,        -3.00
-castanet_out_128kbps_DAMSAC.wav  ,        -2.00,        -2.00
-# ITU-R BS.1116-based test
 # Administered on Thu Mar 12 14:18:32 2020
 # Reference file: /Users/Jan/Downloads/audio-codec-master/ListeningTests/Castanet/castanet.wav
 # Subject name/number: jatin
