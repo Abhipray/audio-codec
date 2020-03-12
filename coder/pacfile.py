@@ -384,9 +384,9 @@ class PACFile(AudioFile):
 
 #-----------------------------------------------------------------------------
 
-input_dir = Path('../test_debug')
-output_dir = Path('../test_debug_out')
-bitrates = [128]
+input_dir = Path('../test_signals')
+output_dir = Path('../test_decoded_vq')
+bitrates = [96, 128]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -445,9 +445,8 @@ if __name__ == "__main__":
                     data = inFile.ReadDataBlock(codingParams)
                     if not data: break  # we hit the end of the input file
                     outFile.WriteDataBlock(data, codingParams)
-                    print(
-                        ".",
-                        end="")  # just to signal how far we've gotten to user
+                    print(".", end="", flush=True
+                          )  # just to signal how far we've gotten to user
                 # end loop over reading/writing the blocks
 
                 # close the files
