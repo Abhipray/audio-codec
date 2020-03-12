@@ -76,7 +76,7 @@ def Decode(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams,
     return data
 
 def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams,
-            lastTrans=False, curTrans=False, nextTrans=False):
+            lastTrans=False, curTrans=False, nextTrans=False, plotStuff=False):
     """Reconstitutes a single-channel block of encoded data into a block of
     signed-fraction data based on the parameters in a PACFile object
     Accounts for spectral band replication via params in codingParams"""
@@ -88,94 +88,113 @@ def Decode_SBR(scaleFactor, bitAlloc, mantissa, overallScaleFactor, codingParams
     vDequantize = np.vectorize(Dequantize)
 
     # reconstitute the first halfN MDCT lines of this channel from the stored data
-    vDQFP = np.vectorize(DequantizeFP)
     mdctLine = np.zeros(halfN, dtype=np.float64)
     iMant = 0
     for iBand in range(codingParams.sfBands.nBands):
         nLines = codingParams.sfBands.nLines[iBand]
         if bitAlloc[iBand]:
-            if iBand in codingParams.omittedBands:
-
-                # setting the whole band to a scalar value
-                mdctLine[iMant:(iMant + nLines)] = vDQFP(
-                    scaleFactor[iBand], mantissa[iMant:(iMant+nLines)],
-                    codingParams.nScaleBits, bitAlloc[iBand])
-            else:
-                mdctLine[iMant:(iMant + nLines)] = vDequantize(
-                    scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
-                    codingParams.nScaleBits, bitAlloc[iBand])
+            mdctLine[iMant:(iMant + nLines)] = vDequantize(
+                scaleFactor[iBand], mantissa[iMant:(iMant + nLines)],
+                codingParams.nScaleBits, bitAlloc[iBand])
         iMant += nLines
 
     # we can smooth this step function of the envelope with a Gaussian kernel to generate a nicer step function
     # the sigma function here controls the smoothing--probably needs some tuning
     omit_cutoff = codingParams.sfBands.lowerLine[codingParams.omittedBands[0]]
     envelope = mdctLine[omit_cutoff:]
-    smoothed_envelope =  gaussian_filter1d(envelope, sigma=100)
-
-    #plt.figure(figsize=(12, 8))
-    #plt.title('MDCT Lines before transposition')
-    #plt.semilogx(np.arange(len(mdctLine)), np.abs(mdctLine)**2)
-    #plt.axvline(x=omit_cutoff, color='r')
-    #plt.show()
-
-    # now, replicate and then multiply by the smoothed envelope
+    #print('min envelope value', np.min(mdctLine[omit_cutoff:]))
+    #print('envelope', envelope)
+    smoothed_envelope = gaussian_filter1d(envelope, sigma=1)
+    
     num_omitted = len(mdctLine)-omit_cutoff
     factor = len(mdctLine)/num_omitted
     factor = floor(factor)
 
+    mdct_spacing = codingParams.sampleRate/(2*codingParams.nMDCTLines)
+    mdct_freqs = (np.arange(codingParams.nMDCTLines)+1/2)*(mdct_spacing)
+
+
+    if plotStuff:
+        plt.figure(figsize=(12, 8))
+        plt.title('Envelope')
+        plt.semilogx(np.arange(num_omitted), envelope)
+        plt.show()
+        
+        plt.figure(figsize=(12, 8))
+        plt.title('Smoothed Envelope')
+        plt.semilogx(np.arange(num_omitted), smoothed_envelope)
+        plt.show()
+
+        plt.figure(figsize=(12, 8))
+        plt.title('MDCT Lines before transposition')
+        plt.semilogx(mdct_freqs, np.abs(mdctLine)**2)
+        plt.axvline(x=mdct_freqs[omit_cutoff], color='r')
+        plt.show()
+
+
     # this works i promise. This interpolates the lower frequencies in order to transpose upward
     # This I expect to be helpful because mdct has an offset we need to acct for
-    interp_indices = np.arange(omit_cutoff//factor, len(mdctLine)//factor + 1)
-    interp_pieces = mdctLine[interp_indices]
+    up_factor = factor*2 
+
+    interp_indices = np.arange(omit_cutoff//up_factor - 1, len(mdctLine)//up_factor + 1)
+    interp_x = mdct_freqs[interp_indices]
+    interp_y = mdctLine[interp_indices]
 
     # for now, do a piecewise linear interpolation. Could try doing quadratic or cubic too
-    interp_fn = interpolate.interp1d(interp_indices, interp_pieces, kind='slinear')
-    new_freqs = np.arange(omit_cutoff/factor + 1/4*(factor-1), len(mdctLine)/factor + 1/4*(factor-1), 1/factor)
-    #print('new freqs len', len(new_freqs))
-    #print('num omitted', num_omitted)
+    interp_fn = interpolate.interp1d(interp_x, interp_y, kind='slinear')
+    new_freqs = mdct_freqs[omit_cutoff:]/up_factor
 
     filers = interp_fn(new_freqs)
-    #print('fillers', filers)
-    #print('hello')
-    #print()
-    #print('orig', interp_pieces)
+    
     mdctLine[omit_cutoff:] = filers
 
-    # OLD: if the factor does not perfectly divide omit_cutoff, we would be introducing an offset unless we accounted for this
-    # filers =  np.repeat(interp_pieces, factor)
-    #num_pre_pieces = factor - omit_cutoff % factor
-    #filers = filers[num_pre_pieces:]
-    #mdctLine[omit_cutoff:] =filers[:num_omitted]
+    if plotStuff:
+#        plt.figure(figsize=(12, 8))
+#        plt.title('Interpolating MDCT')
+#        plt.semilogx(interp_x, np.abs(interp_y)**2)
+#        plt.semilogx(new_freqs, np.abs(filers)**2)
+#        plt.show()
+#
+        plt.figure(figsize=(12, 8))
+        plt.title('MDCT Lines without envelope adjustment')
+        plt.semilogx(mdct_freqs, np.abs(mdctLine)**2)
+        plt.axvline(x=mdct_freqs[omit_cutoff], color='r')
+        plt.show()
 
-    #plt.figure(figsize=(12, 8))
-    #plt.title('Envelope')
-    #plt.semilogx(np.arange(num_omitted), smoothed_envelope)
-    #plt.show()
-
-    #plt.figure(figsize=(12, 8))
-    #plt.title('MDCT Lines without envelope adjustment')
-    #plt.semilogx(np.arange(len(mdctLine)), np.abs(mdctLine)**2)
-    #plt.axvline(x=omit_cutoff, color='r')
-    #plt.show()
+    orig = mdctLine[:omit_cutoff]
 
     # adjust amplitudes by envelope (make zero-safe)
     for iBand in codingParams.omittedBands:
         lowLine = codingParams.sfBands.lowerLine[iBand]
         highLine = codingParams.sfBands.upperLine[iBand] + 1
-        if np.max(np.abs(mdctLine[lowLine:highLine])) > 0:
-            mdctLine[lowLine:highLine] *= \
-                    smoothed_envelope[lowLine-omit_cutoff:highLine-omit_cutoff]/np.mean(np.abs(mdctLine[lowLine:highLine]))
+        
+        currLowLine = lowLine
+        linesPerSub = np.ones(LINES_PER_OMIT)*(codingParams.sfBands.nLines[iBand]//LINES_PER_OMIT)
+        if codingParams.sfBands.nLines[iBand] % LINES_PER_OMIT != 0:
+            linesPerSub[:codingParams.sfBands.nLines[iBand] % LINES_PER_OMIT] += 1
 
-    #plt.figure(figsize=(12, 8))
-    #plt.title('MDCT Lines with envelope adjustment')
-    #plt.semilogx(np.arange(len(mdctLine)), np.abs(mdctLine)**2)
-    #plt.axvline(x=omit_cutoff, color='r')
-    #plt.show()
+        for i in range(LINES_PER_OMIT):
+            currHighLine = int(min(currLowLine + linesPerSub[i], highLine))
+
+            if np.max(np.abs(mdctLine[currLowLine:currHighLine])) > 0:
+                gain_factor = smoothed_envelope[currLowLine-omit_cutoff:currHighLine-omit_cutoff]/np.mean(np.abs(mdctLine[currLowLine:currHighLine]))
+
+                mdctLine[currLowLine:currHighLine] *= gain_factor
+
+            currLowLine = currHighLine
+
+
+    if plotStuff:
+        plt.figure(figsize=(12, 8))
+        plt.title('MDCT Lines with envelope adjustment')
+        plt.semilogx(mdct_freqs, np.abs(mdctLine)**2)
+        plt.axvline(x=mdct_freqs[omit_cutoff], color='r')
+        plt.show()
 
     # add some noise to these high frequency components to sound a bit more natural
     # need to tune scale, which is the standard deviation of each sample
     # right now, the standard deviation of the noise depends on the amplitude of the frequency line (should make sense, right?)
-    mdctLine[omit_cutoff:] += np.random.normal(loc=np.zeros(num_omitted), scale=abs(mdctLine[omit_cutoff:])/10, size=num_omitted)
+    # mdctLine[omit_cutoff:] += np.random.normal(loc=np.zeros(num_omitted), scale=abs(mdctLine[omit_cutoff:])/10, size=num_omitted)
     
     
     #plt.figure(figsize=(12, 8))
@@ -348,10 +367,14 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
     window = getCorrectWindow(lastTrans, curTrans, nextTrans, N)
     mdctTimeSamples = window(data)
     mdctLines = MDCT(mdctTimeSamples, halfN, halfN)[:halfN]
-    fftLines = np.abs(np.fft.rfft(HanningWindow(data))) # compute fft for transmitting the envelope of the signal
+    fftLines = np.abs(np.fft.rfft(HanningWindow(data)))/codingParams.nMDCTLines # compute fft for transmitting the envelope of the signal
 
     # compute overall scale factor for this block and boost mdctLines using it
     maxLine = np.max(np.abs(mdctLines))
+    maxFFTLine = np.max(fftLines)
+    
+    maxLine = max(maxLine, maxFFTLine) # make sure we are all in the range (-1, 1) FFT and MDCT
+
     overallScale = ScaleFactor(
         maxLine, nScaleBits)  #leading zeroes don't depend on nMantBits
     mdctLines *= (1 << overallScale)
@@ -375,7 +398,7 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
             nMant -= sfBands.nLines[
                 iBand]  # account for mantissas not being transmitted
         elif iBand in omittedBands:
-            nMant -= (sfBands.nLines[iBand] - 1)
+            nMant -= LINES_PER_OMIT
     mantissa = np.empty(nMant, dtype=np.int32)
     iMant = 0
     for iBand in range(sfBands.nBands):
@@ -386,11 +409,18 @@ def EncodeSingleChannel_SBR(data, codingParams, lastTrans=False, curTrans=False,
         
         if bitAlloc[iBand]:
             if iBand in omittedBands:
-                scaleLine = np.mean(fftLines[lowLine:highLine])
+                relevant_data = fftLines[lowLine:highLine]
+
+                # splits up critical band into LINES_PER_OMIT subbands, each having equal length except the last few if there is a remainder
+                subbands = np.array_split(relevant_data, LINES_PER_OMIT)
+                to_transmit = np.array([np.mean(s) for s in subbands])
+
+                scaleLine = np.max(to_transmit)
+#                print('scaleLine', scaleLine)
                 scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,
                                                  bitAlloc[iBand])
-                mantissa[iMant] = MantissaFP(scaleLine, scaleFactor[iBand], nScaleBits, bitAlloc[iBand])
-                iMant += 1
+                mantissa[iMant:iMant + LINES_PER_OMIT] = vMantissa(to_transmit, scaleFactor[iBand], nScaleBits, bitAlloc[iBand])
+                iMant += LINES_PER_OMIT
             else:
                 scaleLine = np.max(np.abs(mdctLines[lowLine:highLine]))
                 scaleFactor[iBand] = ScaleFactor(scaleLine, nScaleBits,

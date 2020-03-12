@@ -2,6 +2,7 @@
 import numpy as np
 
 SBR_FACTOR = 2
+LINES_PER_OMIT = 50
 
 def omitted_bands(sfBands, factor=SBR_FACTOR):
     sbr_thresh = sfBands.upperLine[-1]//factor

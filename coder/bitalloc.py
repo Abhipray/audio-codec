@@ -4,8 +4,7 @@ from mdct import *
 from window import *
 from psychoac import *
 from quantize import *
-
-SBR_FACTOR = 2
+from sbr import *
 
 # Question 1.b)
 def BitAllocUniform(bitBudget, maxMantBits, nBands, nLines, SMR=None):
@@ -118,7 +117,76 @@ def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
             # print('stuck in loop!')
             break
 
+#     print('spent vs budget', np.sum(bits * nLines) - bitBudget)
     return bits
+
+# Question 1.c)
+#def BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR):
+#    """
+#    Allocates bits to scale factor bands so as to flatten the NMR across the spectrum
+#
+#       Arguments:
+#           bitBudget is total number of mantissa bits to allocate
+#           maxMantBits is max mantissa bits that can be allocated per line
+#           nBands is total number of scale factor bands
+#           nLines[nBands] is number of lines in each scale factor band
+#           SMR[nBands] is signal-to-mask ratio in each scale factor band
+#
+#        Returns:
+#            bits[nBands] is number of bits allocated to each scale factor band
+#
+#        Logic:
+#           Maximizing SMR over blook gives optimization result that:
+#               R(i) = P/N + (1 bit/ 6 dB) * (SMR[i] - avgSMR)
+#           where P is the pool of bits for mantissas and N is number of bands
+#           This result needs to be adjusted if any R(i) goes below 2 (in which
+#           case we set R(i)=0) or if any R(i) goes above maxMantBits (in
+#           which case we set R(i)=maxMantBits).  (Note: 1 Mantissa bit is
+#           equivalent to 0 mantissa bits when you are using a midtread quantizer.)
+#           We will not bother to worry about slight variations in bit budget due
+#           rounding of the above equation to integer values of R(i).
+#        
+#    """
+#    # compute integer rounding of naive formula
+#    avg_smr = np.mean(SMR)
+#    naive_formula = (bitBudget/nBands + (SMR-avg_smr)/DBTOBITS)
+#    bits = np.around(naive_formula/nLines).astype(np.int32)
+#
+#    # adjust for values that are too high and too low
+#    bits[bits>maxMantBits] = maxMantBits
+#    ones = np.where(bits==1)[0]
+#    bits[bits<2] = 0
+#
+#    # calculate remaining bits, and assign to where we previously had 1 bit allocated if we can
+#    remaining = bitBudget - np.sum(bits*nLines)
+#
+#    while remaining < 0:
+#        bit_allocs = sorted(np.arange(nBands), key=lambda x: bits[x], reverse=True)
+#        if bits[bit_allocs[0]] != 2:
+#            bits[bit_allocs[0]] -= 1
+#        else:
+#            bits[bit_allocs[0]] -= 2
+#
+#        remaining = bitBudget - np.sum(bits*nLines)
+#
+#    # sort ones by SMRs
+#    ones = sorted(ones, key=lambda x:naive_formula[x], reverse=True)
+#
+#    for idx in ones:
+#        if nLines[idx]*2 <= remaining:
+#            bits[idx] += 2
+#            remaining -= nLines[idx]*2
+#
+#    # if there are still remaining bits, allocate by SMR
+#    valid_positions = np.where(bits<maxMantBits)[0]
+#    sorted_SMRs = sorted(valid_positions, key=lambda x:SMR[x], reverse=True)
+#
+#    for idx in sorted_SMRs:
+#        if nLines[idx] <= remaining:
+#            bits[idx] += 1
+#            remaining -= nLines[idx]
+#
+#    return bits
 
 def BitAlloc_SBR(bitBudget, maxMantBits, nBands, nLines, SMR, omittedBands):
     """
@@ -139,20 +207,12 @@ def BitAlloc_SBR(bitBudget, maxMantBits, nBands, nLines, SMR, omittedBands):
             bits[nBands] is number of bits allocated to each scale factor band    
     """
     # sanity check
-    if maxMantBits > 16: maxMantBits = 16
-    bits_extend = np.zeros(len(omittedBands))
 
-    remaining_bands = nBands - len(omittedBands)
-
-    # only transmit envelope if our signal is above the hearing threshold in the band--otherwise we are transmitting unneccessary noise, possibly
-    # taking bits from the lower frequencies when they need it
+    # we are sending LINES_PER_OMIT lines, instead of the original nLines, for all the SBR'ed bands
     for b in omittedBands:
-        if SMR[b] > 0:
-            bitBudget-=maxMantBits
-            bits_extend[b-remaining_bands] = maxMantBits
+        nLines[b] = LINES_PER_OMIT
 
-    bits_normal = BitAlloc(bitBudget, maxMantBits, remaining_bands, nLines[:remaining_bands], SMR[:remaining_bands])
-    return np.concatenate((bits_normal, bits_extend)).astype(np.int32)
+    return BitAlloc(bitBudget, maxMantBits, nBands, nLines, SMR)
 
 
 #-----------------------------------------------------------------------------

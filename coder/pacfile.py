@@ -185,16 +185,30 @@ class PACFile(AudioFile):
             if bitAlloc[iBand]:
                 # if bits allocated, extract those mantissas and put in correct location in matnissa array
                 if iBand in codingParams.omittedBands and not curTrans:
-                        m = pb.ReadBits(bitAlloc[iBand])
+                    m = np.empty(LINES_PER_OMIT, np.int32)
+                    for j in range(LINES_PER_OMIT):
+                        m[j] = pb.ReadBits(
+                            bitAlloc[iBand]
+                        )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so encoded as 1 lower than actual allocation
+                    # need to adjust m to be nLines[iBand] length
+
+                    #print('bitalloc', bitAlloc[iBand])
+                    #print('non-repeated mantissa', m)
+                    num_repeats = np.ones(LINES_PER_OMIT)*(sfBands.nLines[iBand]//LINES_PER_OMIT)
+                    if sfBands.nLines[iBand] % LINES_PER_OMIT != 0:
+                        num_repeats[:sfBands.nLines[iBand] % LINES_PER_OMIT] += 1
+                    
+                    # print('num repeats', num_repeats.astype(np.int32))
+                    # repeat the specified number of times
+                    m = np.repeat(m, num_repeats.astype(np.int32))
                 else:
+        # done unpacking data (end loop over scale factor bands)
                     m = np.empty(sfBands.nLines[iBand], np.int32)
                     for j in range(sfBands.nLines[iBand]):
                         m[j] = pb.ReadBits(
                             bitAlloc[iBand]
                         )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so encoded as 1 lower than actual allocation
                 mantissa[sfBands.lowerLine[iBand]:(sfBands.upperLine[iBand] + 1)] = m
-        # done unpacking data (end loop over scale factor bands)
-
         # CUSTOM DATA:
         # < now can unpack any custom data passed in the nBytes of data >
 
@@ -327,7 +341,7 @@ class PACFile(AudioFile):
             if bitAlloc[iCh][iBand]:
                 # if non-zero bit allocation for this band, add in bits for scale factor and each mantissa (0 bits means zero)
                 if iBand in codingParams.omittedBands and not curTrans:
-                    nBytes += bitAlloc[iCh][iBand]
+                    nBytes += bitAlloc[iCh][iBand]*LINES_PER_OMIT
                 else:
                     nBytes += bitAlloc[iCh][iBand] * sfBands.nLines[
                         iBand]  # no bit alloc = 1 so actuall alloc is one higher
@@ -351,10 +365,10 @@ class PACFile(AudioFile):
             pb.WriteBits(scaleFactor[iCh][iBand], codingParams.nScaleBits)  # scale factor for this band (if bit allocation non-zero)
             if bitAlloc[iCh][iBand]:
                 if iBand in codingParams.omittedBands and not curTrans:
-                    pb.WriteBits(
-                        mantissa[iCh][iMant], bitAlloc[iCh][iBand]
-                    )  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so is 1 higher than the number
-                    iMant += 1
+                    # print('writing bits', mantissa[iCh][iMant:(iMant+LINES_PER_OMIT)], 'bit alloc', bitAlloc[iCh][iBand])
+                    for j in range(LINES_PER_OMIT):
+                        pb.WriteBits(mantissa[iCh][iMant + j], bitAlloc[iCh][iBand])  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so is 1 higher than the number
+                    iMant += LINES_PER_OMIT
                 else:
                     for j in range(sfBands.nLines[iBand]):
                         pb.WriteBits(mantissa[iCh][iMant + j], bitAlloc[iCh][iBand])  # mantissas for this band (if bit allocation non-zero) and bit alloc <>1 so is 1 higher than the number
@@ -489,7 +503,7 @@ class PACFile(AudioFile):
         bit allocations, quantized mantissas, and overall scale factor.
         """
         #Passes decoding logic to the Decode function defined in the codec module
-        if codingParams.useSBR and not curTrans:
+        if codingParams.useSBR and not curTrans and np.any(np.array(bitAlloc)[np.array(codingParams.omittedBands)] != 0 ):
             return codec.Decode_SBR(scaleFactor, bitAlloc, mantissa,
                             overallScaleFactor, codingParams,
                             lastTrans, curTrans, nextTrans)
@@ -502,8 +516,8 @@ class PACFile(AudioFile):
 #-----------------------------------------------------------------------------
 
 input_dir = Path('../test_signals')
-output_dir = Path('../test_decoded')
-bitrates = [128]
+output_dir = Path('../sbr_test_sigma1_50linespband_upfactor4')
+bitrates = [96]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
@@ -517,7 +531,7 @@ if __name__ == "__main__":
     for data_rate in bitrates:
         for in_file in input_dir.glob('*.wav'):
             for Direction in ("Encode", "Decode"):
-                #    for Direction in ("Decode"):
+            # for Direction in ("Decode"):
                 print(f'Processing {in_file} at {data_rate}kbps')
                 # create the audio file objects
                 if Direction == "Encode":
