@@ -18,12 +18,13 @@ R = rate (or number of bits) per dimensions
 
 import numpy as np
 import logging
-from quantize import QuantizeUniform, DequantizeUniform
+from quantize import *
 from gain_shape_encoding import GainShapeEncoding
+from bitpack import PackedBits
 
 log = logging.getLogger(__name__)
 
-SPLIT_BITS = 12
+SPLIT_BITS = 32
 
 
 def pvq_search(x: np.array, k: int):
@@ -298,8 +299,8 @@ def bit_allocation_ms(num_bits, theta, length, k_fine=0):
     else:
         a_mid = np.floor(
             (a_mid_side -
-             (length - 1) * np.log2(np.tan(theta) + np.finfo(float).eps)) /
-            2).astype(np.int)
+             (length - 1) * np.log2(np.tan(abs(theta)) + np.finfo(float).eps))
+            / 2).astype(np.int)
     a_mid = max(a_mid, 0)
     a_side = max(a_mid_side - a_mid, 0)
     return a_theta, a_mid, a_side
@@ -405,13 +406,13 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
         log.debug(f'bitalloc theta: {a_theta}, {a_mid}, {a_side}')
 
         total_used_bits = a_theta
-        left, right = None, None
+
         if a_mid > SPLIT_BITS:
             mid_hat, used_bits = split_band_decode(pb, a_mid, half_band,
                                                    k_fine)
             total_used_bits += used_bits
         else:
-            # decode left here
+            # decode mid here
             k, cb_size = pvq_compute_k_for_R(half_band, a_mid)
             mid_actual_bits = np.ceil(
                 np.log2(cb_size + np.finfo(float).eps)).astype(np.int)
@@ -455,6 +456,7 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
         actual_bits_used = np.ceil(np.log2(cb_size +
                                            np.finfo(float).eps)).astype(np.int)
         idx = pb.ReadBits(actual_bits_used)
+        print(idx, band_size, num_bits)
         x, used_bits = dequantize_pvq(idx, band_size, num_bits)
         x_l2 = np.linalg.norm(x)
         if x_l2 != 0:
@@ -473,10 +475,11 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
 
     # Separate gain and shape
     gain = np.linalg.norm(x)
-    shape = x / (gain + np.finfo(float).eps)
 
     if gain != 0:
         # Encode the shape of the band using split_encode
+        shape = x / gain
+        log.debug(shape)
         indices, bits = split_band_encode(shape, bits_shape, k_fine)
         total_used_bits = sum(bits)
 
@@ -518,3 +521,37 @@ def dequantize_gain_shape(pb, bit_alloc, L, k_fine=0):
     log.debug(f"decoded gain:{gain}")
 
     return gain * shape
+
+
+if __name__ == '__main__':
+    L = 163
+    bit_alloc = 489
+    k_fine = 0
+
+    x = np.random.rand(L) * 2 - 1
+    # test quantize_gain_shape
+    indices, bits = quantize_gain_shape(x, bit_alloc, k_fine)
+    print(indices, bits, sum(bits))
+
+    # pack bits
+    pb = PackedBits()
+    pb.Size(np.ceil(sum(bits) / 8).astype(np.int))
+    for idx, nBits in zip(indices, bits):
+        pb.WriteBits(idx, nBits)  # encode indices
+
+    pb.ResetPointers()
+    x_hat = dequantize_gain_shape(pb, bit_alloc, L, k_fine)
+    error = 10 * np.log10(np.mean((x - x_hat)**2))
+
+    expected_snr = 6.02 * bit_alloc / L
+    print(list(zip(x, x_hat)))
+    scale_bits = 3
+    mantissa_bits = int((bit_alloc - scale_bits) // L)
+    scale = ScaleFactor(np.max(x), scale_bits, mantissa_bits)
+    mantissa = vMantissa(x, scale, scale_bits, mantissa_bits)
+    fp_quant = vDequantize(scale, mantissa, scale_bits, mantissa_bits)
+    fp_error = 10 * np.log10(np.mean((x - fp_quant)**2))
+
+    print(
+        f'error: {error}dB expected: -{expected_snr} fp_error: {fp_error}dB {np.linalg.norm(x)} {np.linalg.norm(x_hat)}'
+    )

@@ -18,7 +18,7 @@ from psychoac import CalcSMRs  # calculates SMRs for each scale factor band
 from bitalloc import *  #allocates bits to scale factor bands given SMRs
 from gain_shape_quantize import quantize_gain_shape, dequantize_gain_shape
 
-K_FINE = -2
+K_FINE = 0
 
 
 def Decode(pb, bitAlloc, overallScaleFactor, codingParams):
@@ -134,8 +134,8 @@ def EncodeSingleChannel(data, codingParams):
             x = mdctLines[lowLine:
                           highLine]  # Input vector for vector quantization
             # perform the vector quantization
-            # print('bit alloc: ', bitAlloc[iBand], len(x))
             band_budget = int(bitAlloc[iBand] * nLines)
+            print('bit alloc: ', band_budget, len(x))
             indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
             if sum(bits) == 0:
                 bitAlloc[iBand] = 0

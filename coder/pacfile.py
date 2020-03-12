@@ -107,10 +107,11 @@ import codec  # module where the actual PAC coding functions reside(this module 
 from psychoac import ScaleFactorBands, AssignMDCTLinesFromFreqLimits  # defines the grouping of MDCT lines into scale factor bands
 from pathlib import Path
 import os
+import sys
 
 import logging
 # logging.basicConfig(level=logging.DEBUG)
-logging.basicConfig()
+# logging.basicConfig()
 
 import numpy as np  # to allow conversion of data blocks to numpy's array object
 MAX16BITS = 32767
@@ -390,7 +391,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)
 if __name__ == "__main__":
-
+    sys.setrecursionlimit(6000)
     print("\nTesting the PAC coder (input.wav -> coded.pac -> output.wav):")
     import time
     from pcmfile import *  # to get access to WAV file handling
@@ -399,7 +400,7 @@ if __name__ == "__main__":
     for data_rate in bitrates:
         for in_file in input_dir.glob('*.wav'):
             for Direction in ("Encode", "Decode"):
-                #    for Direction in ("Decode"):
+                # for Direction in ("Decode"):
                 print(f'Processing {in_file} at {data_rate}kbps')
                 # create the audio file objects
                 if Direction == "Encode":
