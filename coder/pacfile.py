@@ -567,7 +567,6 @@ class PACFile(AudioFile):
         """
         #Passes decoding logic to the Decode function defined in the codec module
         if codingParams.useSBR and not curTrans and np.any(np.array(bitAlloc)[np.array(codingParams.omittedBands)] != 0):
-            print('decoding SBR!')
             return codec.Decode_SBR(scaleFactor, bitAlloc, mantissa,
                             overallScaleFactor, pb, codingParams,
                             lastTrans, curTrans, nextTrans)
