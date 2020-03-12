@@ -24,7 +24,7 @@ from bitpack import PackedBits
 
 log = logging.getLogger(__name__)
 
-SPLIT_BITS = 24
+SPLIT_BITS = 30
 
 
 def pvq_search(x: np.array, k: int):
@@ -242,11 +242,7 @@ def quantize_pvq(x, num_bits):
     assert np.allclose(x_norm, 1.0) or np.allclose(
         x_norm, 0.0), f"x is not a unit-vector, norm={x_norm}"
     L = len(x)
-    k, cb_size = pvq_compute_k_for_R(L, num_bits)
-    actual_bits_used = np.ceil(np.log2(cb_size + np.finfo(float).eps)).astype(
-        np.int)
-
-    N = pvq_codebook_size(L, k)
+    k, actual_bits_used, N = pvq_compute_k_for_R(L, num_bits)
 
     # PVQ the shape
     _, codebook_vector = pvq_search(x, k)
@@ -254,18 +250,16 @@ def quantize_pvq(x, num_bits):
     return codebook_idx, actual_bits_used
 
 
-def dequantize_pvq(cb_idx, L, num_bits):
+def dequantize_pvq(cb_idx, L, k, N=None):
     """Find the codebook vector corresponding to cb_idx"""
-    k, cb_size = pvq_compute_k_for_R(L, num_bits)
-    actual_bits_used = np.ceil(np.log2(cb_size + np.finfo(float).eps)).astype(
-        np.int)
-    N = pvq_codebook_size(L, k)
+    if N is None:
+        N = pvq_codebook_size(L, k)
     x = decode_pvq_vector(cb_idx, L, k, N)
     x = x.astype(np.float)
     x_l2 = np.linalg.norm(x)
     if x_l2 != 0:
         x = x / np.linalg.norm(x)
-    return x, actual_bits_used
+    return x
 
 
 def pvq_compute_k_for_R(L: int, max_bits: int):
@@ -280,7 +274,10 @@ def pvq_compute_k_for_R(L: int, max_bits: int):
     while True:
         N = pvq_codebook_size(L, k)
         if N[L][k] > largest_codebook_size:
-            return k - 1, N[L][k - 1]
+            return k - 1, np.ceil(np.log2(N[L][k - 1] +
+                                          np.finfo(float).eps)).astype(
+                                              np.int), N[:, :k]
+
         k += 1
 
 
@@ -413,28 +410,22 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
             total_used_bits += used_bits
         else:
             # decode mid here
-            k, cb_size = pvq_compute_k_for_R(half_band, a_mid)
-            mid_actual_bits = np.ceil(
-                np.log2(cb_size + np.finfo(float).eps)).astype(np.int)
+            k, mid_actual_bits, N = pvq_compute_k_for_R(half_band, a_mid)
             log.debug(f'mid_actual_bits: {mid_actual_bits}')
             mid_idx = pb.ReadBits(mid_actual_bits)
-            mid_hat, mid_bits = dequantize_pvq(mid_idx, half_band, a_mid)
-            mid_bits = int(np.ceil(mid_bits))
-            total_used_bits += mid_bits
+            mid_hat = dequantize_pvq(mid_idx, half_band, k, N)
+            total_used_bits += mid_actual_bits
         if a_side > SPLIT_BITS:
             side_hat, used_bits = split_band_decode(pb, a_side, half_band,
                                                     k_fine)
             total_used_bits += used_bits
         else:
             # decode right here
-            k, cb_size = pvq_compute_k_for_R(half_band, a_side)
-            side_actual_bits = np.ceil(
-                np.log2(cb_size + np.finfo(float).eps)).astype(np.int)
+            k, side_actual_bits, N = pvq_compute_k_for_R(half_band, a_side)
             log.debug(f'side_actual_bits: {side_actual_bits}')
             side_idx = pb.ReadBits(side_actual_bits)
-            side_hat, side_bits = dequantize_pvq(side_idx, half_band, a_side)
-            side_bits = int(np.ceil(side_bits))
-            total_used_bits += side_bits
+            side_hat = dequantize_pvq(side_idx, half_band, k, N)
+            total_used_bits += side_actual_bits
 
         left = mid_hat * np.cos(theta_hat) + side_hat * np.sin(theta_hat)
         right = mid_hat * np.cos(theta_hat) - side_hat * np.sin(theta_hat)
@@ -452,12 +443,10 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
             x /= x_l2
         return x, total_used_bits
     else:
-        k, cb_size = pvq_compute_k_for_R(band_size, num_bits)
-        actual_bits_used = np.ceil(np.log2(cb_size +
-                                           np.finfo(float).eps)).astype(np.int)
+        k, actual_bits_used, N = pvq_compute_k_for_R(band_size, num_bits)
         idx = pb.ReadBits(actual_bits_used)
-        print(idx, band_size, num_bits)
-        x, used_bits = dequantize_pvq(idx, band_size, num_bits)
+        log.debug(idx, band_size, num_bits)
+        x = dequantize_pvq(idx, band_size, k, N)
         x_l2 = np.linalg.norm(x)
         if x_l2 != 0:
             x /= x_l2
