@@ -11,7 +11,7 @@ def SPL(intensity):
     """
     Returns the SPL corresponding to intensity 
     """
-    spl = 96 + 10 * np.log10(abs(intensity))
+    spl = 96 + 10 * np.log10(abs(intensity) + np.finfo(float).eps)
     if type(intensity) is np.ndarray:
         spl[spl < -30] = -30
     elif spl < -30:
@@ -184,8 +184,8 @@ def getMaskedThreshold(data, MDCTdata, MDCTscale, sampleRate, sfBands):
             upper = sfBands.upperLine[z] + 1
             intensities = norm * abs(x_fft[lower:upper])**2
             spl = SPL(intensities.sum())
-            avg_freq = np.sum(
-                intensities * x_fftfreq[lower:upper]) / intensities.sum()
+            avg_freq = np.sum(intensities * x_fftfreq[lower:upper]) / (
+                intensities.sum() + np.finfo(float).eps)
             masker = Masker(avg_freq, spl, isTonal=False)
             masking_curve = masker.IntensityAtFreq(mdct_freqs)
             masking_spl = SPL(masking_curve)

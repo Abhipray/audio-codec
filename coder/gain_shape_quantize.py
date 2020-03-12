@@ -238,7 +238,8 @@ def decode_pvq_vector(b, L, K, N):
 def quantize_pvq(x, num_bits):
     """Vector quantize a unit-vector x with num_bits"""
     x_norm = np.linalg.norm(x)
-    assert np.allclose(x_norm, 1.0), f"x is not a unit-vector, norm={x_norm}"
+    assert np.allclose(x_norm, 1.0) or np.allclose(
+        x_norm, 0.0), f"x is not a unit-vector, norm={x_norm}"
     L = len(x)
     k, cb_size = pvq_compute_k_for_R(L, num_bits)
     actual_bits_used = np.ceil(np.log2(cb_size + np.finfo(float).eps)).astype(
@@ -292,10 +293,13 @@ def inv_mu_law_fn(y, mu=255):
 
 def bit_allocation_ms(num_bits, theta, length, k_fine=0):
     a_theta, a_mid_side = gain_shape_alloc(num_bits, length, k_fine)
-    a_mid = np.floor(
-        (a_mid_side -
-         (length - 1) * np.log2(np.tan(theta) + np.finfo(float).eps)) /
-        2).astype(np.int)
+    if theta == 0:
+        a_mid = 0
+    else:
+        a_mid = np.floor(
+            (a_mid_side -
+             (length - 1) * np.log2(np.tan(theta) + np.finfo(float).eps)) /
+            2).astype(np.int)
     a_mid = max(a_mid, 0)
     a_side = max(a_mid_side - a_mid, 0)
     return a_theta, a_mid, a_side
@@ -323,10 +327,19 @@ def split_band_encode(x, bit_alloc, k_fine=0):
         S = (left - right) / 2
         M_l2 = np.linalg.norm(M)
         S_l2 = np.linalg.norm(S)
-        m = M / M_l2
-        s = S / S_l2
+        if M_l2 != 0:
+            m = M / M_l2
+        else:
+            m = M
+        if S_l2 != 0:
+            s = S / S_l2
+        else:
+            s = S
         # theta captures distribution of energy between bands
-        theta = np.arctan(S_l2 / M_l2)
+        if M_l2 == 0:
+            theta = 0
+        else:
+            theta = np.arctan(S_l2 / M_l2)
 
         # scalar quantize theta
         log.debug(f'Encoded theta: {theta}')
@@ -433,7 +446,9 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
             left = left[:len(left) - 1]
 
         x = np.concatenate([left, right])
-
+        x_l2 = np.linalg.norm(x)
+        if x_l2 != 0:
+            x /= x_l2
         return x, total_used_bits
     else:
         k, cb_size = pvq_compute_k_for_R(band_size, num_bits)
@@ -441,7 +456,10 @@ def split_band_decode(pb, num_bits, band_size, k_fine=0):
                                            np.finfo(float).eps)).astype(np.int)
         idx = pb.ReadBits(actual_bits_used)
         x, used_bits = dequantize_pvq(idx, band_size, num_bits)
-        return x, used_bits
+        x_l2 = np.linalg.norm(x)
+        if x_l2 != 0:
+            x /= x_l2
+        return x, actual_bits_used
 
 
 def quantize_gain_shape(x, bit_alloc, k_fine=0):
@@ -457,20 +475,24 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
     gain = np.linalg.norm(x)
     shape = x / (gain + np.finfo(float).eps)
 
-    # Encode the shape of the band using split_encode
-    indices, bits = split_band_encode(shape, bits_shape, k_fine)
-    total_used_bits = sum(bits)
+    if gain != 0:
+        # Encode the shape of the band using split_encode
+        indices, bits = split_band_encode(shape, bits_shape, k_fine)
+        total_used_bits = sum(bits)
 
-    # Mu-law scalar quantize gain
-    bits_gain += bits_shape - total_used_bits
-    log.debug(f"original gain: {gain}")
-    gain = mu_law_fn(gain / L)
-    gain_idx = QuantizeUniform(gain, bits_gain)
-    log.debug(f'Actual bits_gain: {bits_gain} bits_shape {total_used_bits}')
+        # Mu-law scalar quantize gain
+        bits_gain += bits_shape - total_used_bits
+        log.debug(f"original gain: {gain}")
+        gain = mu_law_fn(gain / L)
+        gain_idx = QuantizeUniform(gain, bits_gain)
+        log.debug(
+            f'Actual bits_gain: {bits_gain} bits_shape {total_used_bits}')
 
-    indices = indices + [gain_idx]
-    bits = bits + [bits_gain]
-    return indices, bits
+        indices = indices + [gain_idx]
+        bits = bits + [bits_gain]
+        return indices, bits
+    else:
+        return [0], [0]
 
 
 def dequantize_gain_shape(pb, bit_alloc, L, k_fine=0):

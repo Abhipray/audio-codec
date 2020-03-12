@@ -137,6 +137,8 @@ def EncodeSingleChannel(data, codingParams):
             # print('bit alloc: ', bitAlloc[iBand], len(x))
             band_budget = int(bitAlloc[iBand] * nLines)
             indices, bits = quantize_gain_shape(x, band_budget, k_fine=K_FINE)
+            if sum(bits) == 0:
+                bitAlloc[iBand] = 0
             all_indices.append(indices)
             all_idx_bits.append(bits)
 
