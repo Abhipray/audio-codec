@@ -698,7 +698,7 @@ def encode_decode_test(in_file, data_rate):
             # (beyond those set by the PCM file on open)
             codingParams.nMDCTLines = 1024
             codingParams.nScaleBits = 4
-            codingParams.nMantSizeBits = 16
+            codingParams.nMantSizeBits = 12
             codingParams.targetBitsPerSample = data_rate / (
                 codingParams.sampleRate / 1000)
             codingParams.useSBR = True if data_rate < 128 else False
@@ -762,8 +762,8 @@ def encode_decode_test(in_file, data_rate):
     print(elapsed, " seconds elapsed")
 
 
-input_dir = Path('../test_signals')
-output_dir = Path('../test_decoded_full')
+input_dir = Path('../test_debug_long')
+output_dir = Path('../test_debug_long_out')
 bitrates = [96, 128]
 os.makedirs(output_dir, exist_ok=True)
 
