@@ -477,9 +477,7 @@ def quantize_gain_shape(x, bit_alloc, k_fine=0):
     # Allocate bits for gain and shape
     L = len(x)
     bits_gain, bits_shape = gain_shape_alloc(bit_alloc, L, k_fine)
-    # if bit_alloc > 32 and bits_gain < 16:
-    #     bits_gain = 16
-    #     bits_shape = bit_alloc - bits_gain
+
     log.debug(f'Original bits_gain: {bits_gain} bits_shape {bits_shape}')
 
     # Separate gain and shape
@@ -519,9 +517,6 @@ def dequantize_gain_shape(pb, bit_alloc, L, k_fine=0):
     bits_gain, bits_shape = gain_shape_alloc(bit_alloc, L, k_fine)
     log.debug(f'bits_gain: {bits_gain} bits_shape {bits_shape}')
 
-    # if bit_alloc > 32 and bits_gain < 16:
-    #     bits_gain = 16
-    #     bits_shape = bit_alloc - bits_gain
     if bits_shape != 0:
         # Find k that satisfies R_shape
         shape, bits_used = split_band_decode(pb, bits_shape, L, k_fine)

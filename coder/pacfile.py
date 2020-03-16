@@ -758,13 +758,13 @@ def encode_decode_test(in_file, data_rate):
     # end of loop over Encode/Decode
 
     elapsed = time.time() - elapsed
-    print("\nDone with Encode/Decode test\n")
+    print(f"\nDone with Encode/Decode test for {in_file}\n")
     print(elapsed, " seconds elapsed")
 
 
-input_dir = Path('../test_debug_long')
-output_dir = Path('../test_debug_long_out')
-bitrates = [128]
+input_dir = Path('../test_signals')
+output_dir = Path('../test_decoded_full')
+bitrates = [96, 128]
 os.makedirs(output_dir, exist_ok=True)
 
 # Testing the full PAC coder (needs a file called "input.wav" in the code directory)

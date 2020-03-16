@@ -447,9 +447,12 @@ def EncodeSingleChannel_SBR(data,
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
     bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
-    bitBudget -= nScaleBits * (
-        sfBands.nBands + 1
-    )  # less scale factor bits (including overall scale factor)
+    if codingParams.useVQ:
+        bitBudget -= nScaleBits  # Overall scale factor
+    else:
+        bitBudget -= nScaleBits * (
+            sfBands.nBands + 1
+        )  # less scale factor bits (including overall scale factor)
     bitBudget -= codingParams.nMantSizeBits * sfBands.nBands  # less mantissa bit allocation bits
 
     # window data for side chain FFT and also window and compute MDCT
