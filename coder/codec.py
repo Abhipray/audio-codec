@@ -283,7 +283,6 @@ def EncodeSingleChannel(data,
         sfBands = codingParams.sfBandsShort
     else:
         sfBands = codingParams.sfBands  # vectorizing the Mantissa function call
-    # vMantissa = np.vectorize(Mantissa)
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
     NforBitBudget = int(1.45 * halfN) if curTrans else halfN
@@ -442,8 +441,6 @@ def EncodeSingleChannel_SBR(data,
         maxMantBits = 16  # to make sure we don't ever overflow mantissa holders
     sfBands = codingParams.sfBands
     omittedBands = codingParams.omittedBands
-    # vectorizing the Mantissa function call
-    vMantissa = np.vectorize(Mantissa)
 
     # compute target mantissa bit budget for this block of halfN MDCT mantissas
     bitBudget = codingParams.targetBitsPerSample * halfN  # this is overall target bit rate
